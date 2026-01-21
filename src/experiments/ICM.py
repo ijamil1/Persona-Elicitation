@@ -9,7 +9,6 @@ from tqdm import tqdm
 import numpy as np
 from datasets import load_dataset
 import argparse
-
 from core.llm_api.llm import ModelAPI
 from core.utils import setup_environment
 from src.experiments.ICM_tools import (
@@ -19,20 +18,16 @@ from src.experiments.ICM_tools import (
     update_assign_based_on_decision,
 )
 from src.model_querying.prompt_creation import (
-    get_decision_prompt,
-    get_judge_prompt_fewshot,
+    get_judge_prompt_fewshot
 )
 from src.model_querying.solution_extraction import (
-    extract_claim_logprobs,
-    extract_decision_logprobs,
+    extract_claim_logprobs
 )
 from src.pipeline.pipeline import Pipeline, PipelineConfig
 from src.tools.dataloaders import (
-    load_assignments,
-    load_problems_from_json,
-    load_problems_from_json_ids,
+    load_assignments
 )
-from src.tools.path_utils import get_default_results_directory, get_root_directory
+from src.tools.path_utils import get_root_directory
 
 
 def calculate_accuracy(train_data, inconsistent_pairs):
@@ -257,7 +252,7 @@ async def predict_assignment(model, example, demonstrations):
         for k, v in demonstrations.items()
         if k != example["uid"] and v["label"] is not None
     ]
-    anthropic_requests = [
+    model_requests = [
         model_api(
             model,
             get_judge_prompt_fewshot(
@@ -270,7 +265,7 @@ async def predict_assignment(model, example, demonstrations):
             parse_fn=extract_claim_logprobs,
         )
     ]
-    responses = await asyncio.gather(*anthropic_requests)
+    responses = await asyncio.gather(*model_requests)
     score = responses[0][0]["score"]
     new_label = score > 0
     return int(new_label)
