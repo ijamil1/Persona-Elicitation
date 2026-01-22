@@ -348,7 +348,7 @@ def get_args():
                         help="Number of GPUs for tensor parallelism")
     parser.add_argument("--gpu_memory_utilization", type=float, default=0.90,
                         help="Fraction of GPU memory to use (0.0-1.0)")
-    parser.add_argument("--max_model_len", type=int, default=10000,
+    parser.add_argument("--max_model_len", type=int, default=55000,
                         help="Maximum sequence length")
     parser.add_argument("--max_num_batched_tokens", type=int, default=262144,
                         help="Maximum number of batched tokens per iteration")
