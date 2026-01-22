@@ -9,7 +9,6 @@ from tqdm.auto import tqdm
 
 from core.llm_api.llm import ModelAPI
 from src.datatypes.enums import Language
-from src.runners.query_model import QueryConfigBuilder, query_model
 from src.tools.dataloaders import read_from_cache, save_to_cache
 from src.model_querying.solution_extraction import get_yes_no_diff_logprobs
 
@@ -84,10 +83,7 @@ class Pipeline:
         if model_api is not None:
             self.model_api = model_api
         else:
-            self.model_api = ModelAPI(
-                openai_fraction_rate_limit=self.config.openai_fraction_rate_limit,
-                print_prompt_and_response=self.config.print_prompt_and_response,
-            )
+            self.model_api = None
 
         self.file_sem = asyncio.Semaphore(self.config.num_open_files)
 
@@ -108,54 +104,6 @@ class Pipeline:
         task = Task(name, call, use_cache, dependencies)
         self.steps.append(task)
         return task
-
-    def add_query_step(
-        self,
-        name,
-        model,
-        prompt_fn,
-        parse_fn,
-        dependencies=[],
-        use_cache=None,
-        temperature=None,
-        logprobs=None,
-        team=None,
-        max_tokens=4096,
-        bon=1,
-    ):
-        if name in self.step_names:
-            raise ValueError(f"Step name {name} already exists")
-        self.step_names.add(name)
-
-        query_config_builder = (
-            QueryConfigBuilder()
-            .with_model_to_test(model)
-            .with_prompt_fn(lambda x: prompt_fn(x))
-            .with_parse_fn(lambda x: parse_fn(x))
-            .with_num_problems(self.config.num_problems)
-            .with_max_tokens(max_tokens)
-            .with_temperature(temperature)
-            .with_logprobs(logprobs)
-            .with_bon(bon)
-        )
-
-        async def call(data, use_cache, index):
-            response_dict = await query_model(
-                self.model_api,
-                self.file_sem,
-                query_config_builder.with_experiment_name(
-                    f"{self.config.name}/{index:02d}-{name}"
-                )
-                .with_use_cache(use_cache)
-                .with_data(data)
-                .build(),
-            )
-            self.add_cost_data(team, response_dict)
-            return response_dict
-
-        step = Task(name, call, use_cache, dependencies)
-        self.steps.append(step)
-        return step
 
     def add_batched_query_step(
         self,

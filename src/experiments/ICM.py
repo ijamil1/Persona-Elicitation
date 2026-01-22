@@ -366,7 +366,7 @@ def load_data(args):
 
     template = """Question: {question}
         Claim: {answer}
-        I think this claim is """
+        I think the claim is """
 
     for i in country_data:
         i['prompt'] = template.format(question=i['question'], answer=i['choice'])
@@ -450,7 +450,6 @@ async def icm_main(args, train, fewshot_ids, test):
         "train_label_distribution": {"0": 0, "1": 0},
     }
 
-    print(f'Country: {args.country}, Train size: {len(train)}, Test size: {len(test)}')
     print('init random labels = ', Counter([i['label'] for i in demonstrations.values() if i['type'] == 'seed']),
           'init label acc = ', np.mean([i['label'] == i['vanilla_label'] for i in demonstrations.values() if i['type'] == 'seed']))
 
@@ -579,6 +578,7 @@ async def golden_supervision_main(args, train, fewshot_ids, test):
     demonstrations = {}
     for id, i in enumerate(fewshot_ids):
         item = train[i]
+        item['label'] = item['vanilla_label']
         item["uid"] = id
         # Keep the ground truth label
         demonstrations[id] = item
@@ -714,19 +714,17 @@ def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country,
     print(f"Plot saved to {save_path}")
 
 
-async def async_main():
+async def async_main(args):
     """Main async entry point."""
     global model_api
 
-    setup_environment(logger_level="error")
-    args = get_args()
+    setup_environment(logger_level="error", openai_tag='TOGETHER_API_KEY')
     random.seed(args.seed)
-
-    print(f"Model: {args.model}")
-    print(f"Country: {args.country}")
 
     # Load data
     train, fewshot_ids, test = load_data(args)
+
+    print(f'Model: {args.model}, Country: {args.country}, Train size: {len(train)}, Test size: {len(test)}')
 
     # Run ICM
     print("\n" + "="*50)
@@ -792,7 +790,7 @@ if __name__ == "__main__":
     )
 
     try:
-        results = asyncio.run(async_main())
+        results = asyncio.run(async_main(args))
     finally:
         # Gracefully shutdown vLLM engine
         model_api.shutdown()

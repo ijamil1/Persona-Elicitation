@@ -132,43 +132,6 @@ class OpenAIModel(ModelAPIProtocol):
             json_str = json_str.replace("\\n", "\n")
             f.write(json_str)
 
-    async def add_model_id(self, model_id: str):
-        self._assert_valid_id(model_id)
-        if model_id in self.model_ids:
-            return
-
-        # make dummy request to get token and request capacity
-        model_metadata = await self._get_dummy_response_header(model_id)
-        token_capacity = int(model_metadata["x-ratelimit-limit-tokens"])
-        request_capacity = int(model_metadata["x-ratelimit-limit-requests"])
-        print(
-            f"got capacities for model {model_id}: {token_capacity}, {request_capacity}"
-        )
-        tokens_consumed = token_capacity - int(
-            model_metadata["x-ratelimit-remaining-tokens"]
-        )
-        requests_consumed = request_capacity - int(
-            model_metadata["x-ratelimit-remaining-requests"]
-        )
-        print(
-            f"consumed capacities for model {model_id}: {tokens_consumed}, {requests_consumed}"
-        )
-        token_cap = token_capacity * self.frac_rate_limit
-        request_cap = request_capacity * self.frac_rate_limit
-        if model_id in BASE_MODELS:
-            token_cap *= (
-                10000  # openai does not track token limit so we can increase it
-            )
-
-        print(f"setting cap for model {model_id}: {token_cap}, {request_cap}")
-        self.model_ids.add(model_id)
-        token_capacity = Resource(token_cap)
-        request_capacity = Resource(request_cap)
-        token_capacity.consume(min(token_cap, tokens_consumed))
-        request_capacity.consume(min(request_cap, requests_consumed))
-        self.token_capacity[model_id] = token_capacity
-        self.request_capacity[model_id] = request_capacity
-
     async def __llama_call__(
         self,
         model_ids: list[str],
@@ -185,19 +148,15 @@ class OpenAIModel(ModelAPIProtocol):
 
         start = time.time()
 
-        async def attempt_api_call():
-            api_base_list = [os.environ['LLAMA_API_BASE']]
-                
-            kwargs["api_base"] = random.choice(api_base_list)
+        async def attempt_api_call():    
+            kwargs["api_base"] = "https://api.together.xyz/v1"
             for model_id in cycle(model_ids):
                 return await asyncio.wait_for(
                     self._make_api_call(prompt, model_id, start, **kwargs),
                     timeout=100,  # cloudflare has a 100-second limit for a connection to remain open:  https://docs.runpod.io/pods/configuration/expose-ports
                 )
 
-        model_ids.sort(
-            key=lambda model_id: price_per_token(model_id)[0]
-        )  # Default to cheapest model
+        
         model_id = model_ids[0]
         prompt = self._process_prompt(prompt)
         # prompt_file = self._create_prompt_history_file(prompt)
@@ -354,7 +313,7 @@ class OpenAIChatModel(OpenAIModel):
     async def _make_api_call(
         self, prompt: OAIChatPrompt, model_id, start_time, **params
     ) -> list[LLMResponse]:
-        LOGGER.debug(f"Making {model_id} call with {self.organization}")
+        LOGGER.debug(f"Making {model_id} call")
 
         if params.get("logprobs", None):
             params["top_logprobs"] = params["logprobs"]

@@ -83,13 +83,11 @@ def load_secrets(
             secrets[key] = value
 
     openai.api_key = secrets[openai_tag]
-    os.environ['LLAMA_API_BASE'] = secrets['LLAMA_API_BASE']
     
-
     if organization is not None:
         openai.organization = secrets[organization]
-    if secrets.get("API_BASE") is not None:
-        openai.api_base = secrets['API_BASE']
+    if secrets.get("NEW_LLAMA_API_BASE") is not None:
+        openai.api_base = secrets['NEW_LLAMA_API_BASE']
     return secrets
 
 
