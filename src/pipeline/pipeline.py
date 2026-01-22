@@ -3,6 +3,7 @@ __all__ = ["PipelineConfig", "Pipeline"]
 import asyncio
 import logging
 from collections import deque
+from typing import Optional
 
 from tqdm.auto import tqdm
 
@@ -10,6 +11,7 @@ from core.llm_api.llm import ModelAPI
 from src.datatypes.enums import Language
 from src.runners.query_model import QueryConfigBuilder, query_model
 from src.tools.dataloaders import read_from_cache, save_to_cache
+from src.model_querying.solution_extraction import get_yes_no_diff_logprobs
 
 logger = logging.getLogger(__name__)
 
@@ -64,16 +66,31 @@ class PipelineConfig:
 
 
 class Pipeline:
-    def __init__(self, config):
+    def __init__(self, config, model_api: Optional[ModelAPI] = None):
+        """
+        Initialize Pipeline.
+
+        Args:
+            config: PipelineConfig instance
+            model_api: Optional shared ModelAPI instance. If not provided, creates a new one.
+                       Pass a shared instance to use vLLM or to share API clients across pipelines.
+        """
         self.config = config
         self.steps = []
         self.step_names = set()
         self.results = {}
-        self.model_api = ModelAPI(
-            self.config.openai_fraction_rate_limit,
-            self.config.print_prompt_and_response,
-        )
-      
+
+        # Use provided model_api or create a new one
+        if model_api is not None:
+            self.model_api = model_api
+        else:
+            self.model_api = ModelAPI(
+                openai_fraction_rate_limit=self.config.openai_fraction_rate_limit,
+                print_prompt_and_response=self.config.print_prompt_and_response,
+            )
+
+        self.file_sem = asyncio.Semaphore(self.config.num_open_files)
+
     def add_load_data_step(
         self, name, dataloader_fn, data_location, dependencies=[], use_cache=None
     ):
@@ -135,6 +152,95 @@ class Pipeline:
             )
             self.add_cost_data(team, response_dict)
             return response_dict
+
+        step = Task(name, call, use_cache, dependencies)
+        self.steps.append(step)
+        return step
+
+    def add_batched_query_step(
+        self,
+        name,
+        model,
+        prompt_fn,
+        dependencies=[],
+        use_cache=None,
+        temperature=0.0,
+        logprobs=5,
+        max_tokens=1,
+    ):
+        """
+        Add a batched query step optimized for vLLM inference.
+
+        Instead of making N separate API calls, this creates a single batched call
+        that processes all examples together using vLLM's batch inference.
+
+        Args:
+            name: Step name
+            model: Model identifier
+            prompt_fn: Function to generate prompt from example
+            dependencies: List of dependent steps
+            use_cache: Whether to use caching
+            temperature: Sampling temperature
+            logprobs: Number of logprobs to return
+            max_tokens: Maximum tokens to generate
+        """
+        if name in self.step_names:
+            raise ValueError(f"Step name {name} already exists")
+        self.step_names.add(name)
+
+        async def call(data, use_cache, index):
+            """
+            Perform batched inference on all examples.
+
+            Args:
+                data: Dict of {example_id: example_data}
+                      Each example must have fields needed by prompt_fn
+
+            Returns:
+                Dict of {example_id: example_with_score}
+            """
+            example_ids = list(data.keys())
+            examples = list(data.values())
+
+            # Prepare all prompts at once
+            all_prompts = []
+            for example in examples:
+                prompt = prompt_fn(example)
+                # Handle Prompt objects
+                if hasattr(prompt, 'text'):
+                    prompt = prompt.text
+                all_prompts.append(prompt)
+
+            # Make a single batched request
+            # vLLM handles batching internally when given a list of prompts
+            responses = await self.model_api(
+                model,
+                all_prompts,
+                logprobs=logprobs,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+
+            # Extract scores from batched responses
+            result = {}
+            for example_id, example, response in zip(example_ids, examples, responses):
+                example_copy = example.copy()
+                try:
+                    # Handle LLMResponse objects
+                    if hasattr(response, 'logprobs'):
+                        logprobs_data = response.logprobs
+                    else:
+                        logprobs_data = response.get("logprobs", response.get("response", {}).get("logprobs"))
+
+                    score = get_yes_no_diff_logprobs(logprobs_data)
+                    example_copy["score"] = score
+                except Exception as e:
+                    logger.warning(f"Error extracting score for example {example_id}: {e}")
+                    example_copy["score"] = 0
+
+                result[example_id] = example_copy
+
+            return result
 
         step = Task(name, call, use_cache, dependencies)
         self.steps.append(step)
@@ -210,6 +316,14 @@ class Pipeline:
         self.steps.append(step)
         return step
 
+    def add_cost_data(self, team, response_dict):
+        """Track costs from API calls."""
+        pass  # Placeholder for cost tracking
+
+    def speak(self, message):
+        """Log a message."""
+        logger.info(message)
+
     def topological_sort_tasks(self, tasks):
         in_degree = {task: len(task.dependencies) for task in tasks}
 
@@ -261,5 +375,5 @@ class Pipeline:
                 raise e
             logger.info(f"Finished step {task.index}: {task.name}")
         self.speak("Jobs done")
-        logger.info("Run complete!! Nice!! 🚀🚀")
+        logger.info("Run complete!! Nice!!")
         return self.results

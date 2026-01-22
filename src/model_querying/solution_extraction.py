@@ -16,8 +16,24 @@ def get_yes_no(x):
 
 
 def get_yes_no_diff_logprobs(logprobs):
+    """
+    Calculate the difference in log probabilities between True and False tokens.
+
+    Handles multiple formats:
+    - Dict format: {token_str: logprob, ...}
+    - List format from vLLM: [{token_str: logprob, ...}, ...]
+    """
     eps = 1e-5
     prob_sums = {False: eps, True: eps}
+
+    # Handle list format (vLLM returns list of dicts, one per token position)
+    if isinstance(logprobs, list):
+        # For single token generation, we only care about the first position
+        if len(logprobs) > 0 and isinstance(logprobs[0], dict):
+            logprobs = logprobs[0]
+        else:
+            return 0
+
     for k, v in logprobs.items():
         o = get_yes_no(k)
         if o is None:

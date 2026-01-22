@@ -117,6 +117,7 @@ def run_consistencyfix(
     decision=None,
     iter=None,
     assignment=None,
+    model_api=None,
 ):
     pipeline_name = f"consistencyfix-iter-{iter}"
     if decision_id is not None:
@@ -130,7 +131,7 @@ def run_consistencyfix(
         num_problems=None,
         use_cache=use_cache,
     )
-    pipeline = Pipeline(pipeline_config)
+    pipeline = Pipeline(pipeline_config, model_api=model_api)
 
     assert assignment is not None
     initial_assign = pipeline.add_load_data_step(
@@ -175,13 +176,12 @@ def run_consistencyfix(
         dependencies=[initial_assign],
     )
 
-    get_train_preds = pipeline.add_query_step(
+    get_train_preds = pipeline.add_batched_query_step(
         "get_train_preds",
         model,
         get_judge_prompt_fewshot,
-        extract_claim_logprobs,
         dependencies=[merged_train_data],
-        logprobs=20,
+        logprobs=5,
         max_tokens=1,
         use_cache=use_cache,
     )

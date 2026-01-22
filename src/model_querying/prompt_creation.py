@@ -43,3 +43,17 @@ def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
         return Prompt(prompt)
     else:
         return prompt
+
+
+def get_judge_prompt_zeroshot(example, pipeline=True):
+    """
+    Create a zero-shot prompt for evaluating a claim without demonstrations.
+
+    Used for benchmarking zero-shot performance of chat and pretrained models.
+    """
+    prompt = example['prompt']
+
+    if pipeline:
+        return Prompt(prompt)
+    else:
+        return prompt
