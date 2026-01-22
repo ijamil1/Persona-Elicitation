@@ -1,3 +1,4 @@
+# %%
 import asyncio
 import json
 import logging
@@ -8,24 +9,23 @@ from datetime import datetime
 from itertools import cycle
 from traceback import format_exc
 from typing import Optional, Union
+
 import attrs
 import openai
+from openai import AsyncOpenAI
 import requests
 import tiktoken
-from openai.openai_object import OpenAIObject as OpenAICompletion
 from tenacity import retry, stop_after_attempt, wait_fixed
 from termcolor import cprint
 
 from core.llm_api.base_llm import (
     PRINT_COLORS,
     LLMResponse,
-    ModelAPIProtocol,
-)
+    ModelAPIProtocol)
 
 OAIChatPrompt = list[dict[str, str]]
 OAIBasePrompt = Union[str, list[str]]
 LOGGER = logging.getLogger(__name__)
-
 
 @attrs.define()
 class Resource:
@@ -79,6 +79,9 @@ class OpenAIModel(ModelAPIProtocol):
     print_prompt_and_response: bool = False
     model_ids: set[str] = attrs.field(init=False, default=attrs.Factory(set))
 
+    # OpenAI clients (v1.x+ API)
+    llama_client: AsyncOpenAI = attrs.field(init=False)  # For Llama models with custom base URL
+
     # rate limit
     token_capacity: dict[str, Resource] = attrs.field(
         init=False, default=attrs.Factory(dict)
@@ -93,6 +96,16 @@ class OpenAIModel(ModelAPIProtocol):
         init=False, default=attrs.Factory(asyncio.Lock)
     )
 
+    def __attrs_post_init__(self):
+        # Initialize OpenAI client
+        
+        # Initialize Llama client with custom base URL from environment
+        llama_api_base = os.environ.get('NEW_LLAMA_API_BASE', 'https://api.hyperbolic.xyz/v1')
+        self.llama_client = AsyncOpenAI(
+            api_key=openai.api_key,
+            base_url=llama_api_base
+        )
+
     @staticmethod
     def _assert_valid_id(model_id: str):
         raise NotImplementedError
@@ -103,9 +116,6 @@ class OpenAIModel(ModelAPIProtocol):
 
     @staticmethod
     def _count_prompt_token_capacity(prompt, **kwargs) -> int:
-        raise NotImplementedError
-
-    async def _make_api_call(self, prompt, model_id, **params) -> list[LLMResponse]:
         raise NotImplementedError
 
     @staticmethod
@@ -143,20 +153,18 @@ class OpenAIModel(ModelAPIProtocol):
         kwargs = {
             key: value
             for key, value in kwargs.items()
-            if key not in ("save_path", "metadata")
+            if key not in ("save_path", "metadata", "api_base")  # Remove api_base from kwargs
         }
 
         start = time.time()
 
-        async def attempt_api_call():    
-            kwargs["api_base"] = "https://api.together.xyz/v1"
+        async def attempt_api_call():
             for model_id in cycle(model_ids):
                 return await asyncio.wait_for(
-                    self._make_api_call(prompt, model_id, start, **kwargs),
+                    self._make_api_call_llama(prompt, model_id, start, **kwargs),
                     timeout=100,  # cloudflare has a 100-second limit for a connection to remain open:  https://docs.runpod.io/pods/configuration/expose-ports
                 )
 
-        
         model_id = model_ids[0]
         prompt = self._process_prompt(prompt)
         # prompt_file = self._create_prompt_history_file(prompt)
@@ -166,6 +174,7 @@ class OpenAIModel(ModelAPIProtocol):
                 responses = await attempt_api_call()
             except Exception as e:
                 error_info = f"Exception Type: {type(e).__name__}, Error Details: {str(e)}, Traceback: {format_exc()}"
+                print('error_info', error_info)
                 LOGGER.warn(
                     f"Encountered API error: {error_info}.\nRetrying now. (Attempt {i})"
                 )
@@ -200,6 +209,7 @@ class OpenAIModel(ModelAPIProtocol):
                 model_ids, prompt, print_prompt_and_response, max_attempts, **kwargs
             )
 
+
 _GPT_4_MODELS = [
     "gpt-4o",
     "gpt-4",
@@ -229,7 +239,12 @@ _GPT_4_MODELS = [
     "meta-llama/llama-2-70b-chat",
     "meta-llama/llama-3.1-8b-instruct",
     "meta-llama/llama-3.1-70b-instruct",
-    "meta-llama/llama-3.1-405b-instruct",
+    "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    "meta-llama/Meta-Llama-3.1-405B-Instruct",
+    "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+    "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+    "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
     "qwen/qwen-2.5-7b-instruct",
     "openai/gpt-4o",
     "openchat/openchat-7b",
@@ -296,31 +311,21 @@ class OpenAIChatModel(OpenAIModel):
             + kwargs.get("n", 1) * kwargs.get("max_tokens", 15),
         )
 
-    def convert_top_logprobs(self, data):
-        # Initialize the new structure with only top_logprobs
-        top_logprobs = []
-
-        for item in data["content"]:
-            # Prepare a dictionary for top_logprobs
-            top_logprob_dict = {}
-            for top_logprob in item["top_logprobs"]:
-                top_logprob_dict[top_logprob["token"]] = top_logprob["logprob"]
-
-            top_logprobs.append(top_logprob_dict)
-
-        return top_logprobs
-
-    async def _make_api_call(
+    async def _make_api_call_llama(
         self, prompt: OAIChatPrompt, model_id, start_time, **params
     ) -> list[LLMResponse]:
-        LOGGER.debug(f"Making {model_id} call")
-
-        if params.get("logprobs", None):
-            params["top_logprobs"] = params["logprobs"]
-            params["logprobs"] = True
+        """Make API call for Llama chat models using custom base URL client."""
+        LOGGER.debug(f"Making {model_id} call (Llama Chat)")
 
         api_start = time.time()
-        api_response: OpenAICompletion = await openai.ChatCompletion.acreate(messages=prompt, model=model_id, organization=self.organization, **params)  # type: ignore
+        prompt_ = [{"role": "user", "content": prompt}]
+
+        api_response = await self.llama_client.chat.completions.create(
+            messages=prompt_,
+            model=model_id,
+            **params
+        )
+
         api_duration = time.time() - api_start
         duration = time.time() - start_time
         return [
@@ -328,11 +333,12 @@ class OpenAIChatModel(OpenAIModel):
                 model_id=model_id,
                 completion=choice.message.content
                 if "tools" not in params
-                else choice.message.tool_calls[0]["function"]["arguments"],
+                else choice.message.tool_calls[0].function.arguments,
                 stop_reason=choice.finish_reason,
                 api_duration=api_duration,
                 duration=duration,
-                logprobs=self.convert_top_logprobs(choice.logprobs)
+                cost=0,  # No cost for self-hosted Llama
+                logprobs=choice.logprobs.top_logprobs
                 if choice.logprobs is not None
                 else None,
             )
@@ -352,3 +358,12 @@ class OpenAIChatModel(OpenAIModel):
                 cprint(f"==RESPONSE {i + 1} ({response.model_id}):", "white")
             cprint(response.completion, PRINT_COLORS["assistant"], attrs=["bold"])
         print()
+
+
+BASE_MODELS = {
+    "meta-llama/Llama-3.1-8B",
+    "meta-llama/Llama-3.1-70B",
+    "meta-llama/Meta-Llama-3.1-405B",
+    "meta-llama/Meta-Llama-3.1-70B",
+    "meta-llama/Meta-Llama-3.1-8B"
+}
