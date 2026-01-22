@@ -40,6 +40,7 @@ class ModelAPI:
     vllm_gpu_memory_utilization: float = 0.90
     vllm_max_model_len: Optional[int] = None
     vllm_max_num_batched_tokens: Optional[int] = None
+    vllm_max_num_seqs: int = 485
     vllm_enable_prefix_caching: bool = True
 
     _openai_chat: OpenAIChatModel = attrs.field(init=False)
@@ -58,7 +59,7 @@ class ModelAPI:
             frac_rate_limit=self.openai_fraction_rate_limit,
             print_prompt_and_response=self.print_prompt_and_response,
         )
-
+        assert self.vllm_model_name in ["meta-llama/Llama-3.1-8B", "meta-llama/Llama-3.1-70B"]
         # Initialize vLLM client if enabled
         if self.use_vllm and self.vllm_model_name:
             from core.llm_api.vllm_llm import VLLMInProcessClient
@@ -69,6 +70,7 @@ class ModelAPI:
                 gpu_memory_utilization=self.vllm_gpu_memory_utilization,
                 max_model_len=self.vllm_max_model_len,
                 max_num_batched_tokens=self.vllm_max_num_batched_tokens,
+                max_num_seqs=self.vllm_max_num_seqs,
                 enable_prefix_caching=self.vllm_enable_prefix_caching,
                 print_prompt_and_response=self.print_prompt_and_response,
             )

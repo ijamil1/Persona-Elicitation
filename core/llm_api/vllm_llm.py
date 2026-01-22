@@ -48,6 +48,7 @@ class VLLMInProcessClient:
         gpu_memory_utilization: float = 0.90,
         max_model_len: Optional[int] = None,
         max_num_batched_tokens: Optional[int] = None,
+        max_num_seqs: int = 485,
         enable_prefix_caching: bool = True,
         print_prompt_and_response: bool = False,
     ):
@@ -56,6 +57,7 @@ class VLLMInProcessClient:
         self.gpu_memory_utilization = gpu_memory_utilization
         self.max_model_len = max_model_len
         self.max_num_batched_tokens = max_num_batched_tokens
+        self.max_num_seqs = max_num_seqs
         self.enable_prefix_caching = enable_prefix_caching
         self.print_prompt_and_response = print_prompt_and_response
 
@@ -84,6 +86,9 @@ class VLLMInProcessClient:
 
         if self.max_num_batched_tokens is not None:
             engine_args["max_num_batched_tokens"] = self.max_num_batched_tokens
+
+        if self.max_num_seqs is not None:
+            engine_args["max_num_seqs"] = self.max_num_seqs
 
         self._engine = vllm.LLM(**engine_args)
         self._initialized = True

@@ -22,8 +22,7 @@ from src.model_querying.prompt_creation import (
     get_judge_prompt_zeroshot,
 )
 from src.model_querying.solution_extraction import (
-    extract_claim_logprobs,
-    get_yes_no_diff_logprobs,
+    get_yes_no_diff_logprobs
 )
 from src.pipeline.pipeline import Pipeline, PipelineConfig
 from src.tools.dataloaders import load_assignments
@@ -134,6 +133,7 @@ async def fix_inconsistency(demonstrations, cur_metric, name, args, iter=0, K=20
             break
         else:
             assignment = best_assignment
+            best_decision_id = None
 
     for k in assignment:
         demonstrations[k] = assignment[k]
@@ -331,12 +331,12 @@ def get_energy(metric, alpha):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--alpha", type=float, default=30)
+    parser.add_argument("--alpha", type=float, default=10)
     parser.add_argument("--seed", type=int, default=27565976)
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-70B")
     parser.add_argument("--num_seed", type=int, default=8)
     parser.add_argument("--K", type=int, default=1500)
-    parser.add_argument("--consistency_fix_K", type=int, default=10)
+    parser.add_argument("--consistency_fix_K", type=int, default=20)
     parser.add_argument("--decay", type=float, default=0.99)
     parser.add_argument("--initial_T", type=float, default=10)
     parser.add_argument("--final_T", type=float, default=0.01)
@@ -352,6 +352,8 @@ def get_args():
                         help="Maximum sequence length")
     parser.add_argument("--max_num_batched_tokens", type=int, default=262144,
                         help="Maximum number of batched tokens per iteration")
+    parser.add_argument("--max_num_seqs", type=int, default=485,
+                        help="Maximum number of sequences per iteration")
 
     args = parser.parse_args()
     return args
@@ -777,6 +779,10 @@ async def async_main(args):
 if __name__ == "__main__":
     args = get_args()
 
+    valid_ctrys = ["United States", "Turkey", "Russia", "Pakistan", "Nigeria", "Mexico", "Lebanon", "Jordan", "Japan", "Indonesia", "India", "Germany", "France", "Brazil"]
+
+    assert args.country in valid_ctrys
+
     # Initialize ModelAPI with vLLM configuration
     model_api = ModelAPI(
         openai_fraction_rate_limit=0.99,
@@ -786,6 +792,7 @@ if __name__ == "__main__":
         vllm_gpu_memory_utilization=args.gpu_memory_utilization,
         vllm_max_model_len=args.max_model_len,
         vllm_max_num_batched_tokens=args.max_num_batched_tokens,
+        vllm_max_num_seqs=args.max_num_seqs,
         vllm_enable_prefix_caching=True,
     )
 
