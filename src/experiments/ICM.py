@@ -49,7 +49,7 @@ def calculate_accuracy(train_data, inconsistent_pairs):
         else np.mean([i["label"] == i["vanilla_label"] for i in train_data.values()]),
         "train_prob": train_prob,
         "train_size": len(train_data),
-        "inconsistent_num": len(inconsistent_pairs),
+        "inconsistent_num": len(inconsistent_pairs)
     }
 
 
@@ -62,7 +62,7 @@ def update_assign(data):
     return data
 
 
-def fix_inconsistency(demonstrations, cur_metric, name, alpha, iter=0, K=20):
+def fix_inconsistency(demonstrations, cur_metric, name, iter=0, K=20):
     
     if cur_metric["inconsistent_num"] == 0:
         return demonstrations, cur_metric
@@ -75,13 +75,12 @@ def fix_inconsistency(demonstrations, cur_metric, name, alpha, iter=0, K=20):
     best_decision_id = None
     for k in range(K):
         pipeline = propose_consistencyfix(
-            args.model,
             name=name,
             iter=f"{iter}-{k}",
             assignment=assignment,
         )
         results = asyncio.run(pipeline.run())
-        decisions = results["decisions"]
+        decisions = results["pick_two_inconsistent_claims"]
         assignment = results["get_assign"]
         for decision_id, decision in enumerate(decisions.values()):
             tmp_decision_metric_list = []
@@ -288,7 +287,6 @@ def get_args():
     parser.add_argument("--seed", type=int, default=27565976)
     parser.add_argument("--testbed", type=str, default="gsm8k")
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-70B")
-    parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--num_seed", type=int, default=8)
     parser.add_argument("--K", type=int, default=3000)
     parser.add_argument("--consistency_fix_K", type=int, default=10)
@@ -296,30 +294,62 @@ def get_args():
     parser.add_argument("--initial_T", type=float, default=10)
     parser.add_argument("--final_T", type=float, default=0.01)
     parser.add_argument("--scheduler", type=str, default="log")
+    parser.add_argument("--country", type=str, default="United States")
     args = parser.parse_args()
     return args
 
 def load_data(args):
-    
-    with open(get_root_directory() / "data/train_truthfulqa.json") as f:
-        train = json.load(f)
+
+    with open(get_root_directory() / "data/transformed_global_opinions.json") as f:
+        data = json.load(f)
+
+    # Filter by country
+    country_data = [item for item in data if item['country'] == args.country]
+
     template = """Question: {question}
         Claim: {answer}
         I think this claim is """
 
-    for i in train:
-        i['source'] = 'truthfulQA'
+    for i in country_data:
         i['prompt'] = template.format(question=i['question'], answer=i['choice'])
-    args.GROUP_SIZE = 4
-    
 
-    # sample a batch of batch_size datapoints
-    fewshot_ids = random.sample(list(range(len(train)// args.GROUP_SIZE)), args.batch_size // args.GROUP_SIZE)
-    fewshot_ids = [
-        i * args.GROUP_SIZE + j for i in fewshot_ids for j in range(args.GROUP_SIZE)
-    ]
+    # Group by consistency_id
+    consistency_groups = {}
+    for idx, item in enumerate(country_data):
+        cid = item['consistency_id']
+        if cid not in consistency_groups:
+            consistency_groups[cid] = []
+        consistency_groups[cid].append(idx)
 
-    return train, fewshot_ids
+    # Shuffle groups and accumulate until we reach ~75% of total items
+    group_ids = list(consistency_groups.keys())
+    random.shuffle(group_ids)
+
+    total_items = len(country_data)
+    target_train_items = int(total_items * 0.75)
+
+    train_ids = []
+    train_group_ids = []
+    for gid in group_ids:
+        if len(train_ids) >= target_train_items:
+            break
+        train_ids.extend(consistency_groups[gid])
+        train_group_ids.append(gid)
+
+    # Remaining groups go to test
+    test_group_ids = [gid for gid in group_ids if gid not in train_group_ids]
+    test_ids = []
+    for gid in test_group_ids:
+        test_ids.extend(consistency_groups[gid])
+
+    # Build train and test lists
+    train = [country_data[i] for i in train_ids]
+    test = [country_data[i] for i in test_ids]
+
+    # fewshot_ids is just all indices into train
+    fewshot_ids = list(range(len(train)))
+
+    return train, fewshot_ids, test
 
 def initialize(train, fewshot_ids, args):
     demonstrations = {}
@@ -344,11 +374,9 @@ def initialize(train, fewshot_ids, args):
     return demonstrations, whole_ids
 
 
-def main(args):
-    train, fewshot_ids = load_data(args)
-
+def icm_main(args, train, fewshot_ids):
     demonstrations, whole_ids = initialize(train, fewshot_ids, args)
-    
+
     cur_metric = {
         "train_prob": -1e6,
         "inconsistent_num": 100000,
@@ -356,9 +384,10 @@ def main(args):
         "train_predict_distribution": {"0": 0, "1": 0},
         "train_label_distribution": {"0": 0, "1": 0},
     }
-    
+
+    print(f'Country: {args.country}, Train size: {len(train)}')
     print('init random labels = ', Counter([i['label'] for i in demonstrations.values() if i['type'] == 'seed']), 'init label acc = ', np.mean([i['label'] == i['vanilla_label'] for i in demonstrations.values() if i['type'] == 'seed']))
-    name = f"{args.testbed}-llama70b-K{args.K}-bc{args.batch_size}_seed{args.seed}-initialsize{args.num_seed}-weighted{args.alpha}-decay{args.decay}-initialT{args.initial_T}-finalT{args.final_T}-scheduler{args.scheduler}"
+    name = f"{args.country}-K{args.K}_seed{args.seed}-initialsize{args.num_seed}-weighted{args.alpha}-decay{args.decay}-initialT{args.initial_T}-finalT{args.final_T}-scheduler{args.scheduler}"
 
     iter = 0
     flip_cnt = 0
@@ -381,7 +410,7 @@ def main(args):
             cur_metric = results["evaluate"]
             
             demonstrations, cur_metric = fix_inconsistency(
-                demonstrations, cur_metric, name, args.alpha, iter=iter, K=args.consistency_fix_K
+                demonstrations, cur_metric, name, iter=iter, K=args.consistency_fix_K
             )
             
         cur_pool = {
@@ -424,7 +453,6 @@ def main(args):
                 tmp_demonstrations,
                 dummy_metric,
                 name + "newlabelexplore",
-                args.alpha,
                 iter=iter,
                 K=10,
             )
@@ -469,7 +497,7 @@ def main(args):
 if __name__ == "__main__":
     setup_environment(logger_level="error")
     model_api = ModelAPI(openai_fraction_rate_limit=0.99)
-    args = get_args()  
-    print("task: ", args.testbed)
+    args = get_args()
     random.seed(args.seed)
-    main(args)
+    train, fewshot_ids, test = load_data(args)
+    icm_main(args, train, fewshot_ids)

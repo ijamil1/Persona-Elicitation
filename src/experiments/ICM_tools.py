@@ -5,15 +5,13 @@ from collections import Counter
 from copy import deepcopy
 
 import numpy as np
-from datasets import load_dataset
+
 
 from src.model_querying.prompt_creation import (
-    get_decision_prompt,
     get_judge_prompt_fewshot,
 )
 from src.model_querying.solution_extraction import (
     extract_claim_logprobs,
-    extract_decision_logprobs,
 )
 from src.pipeline.pipeline import Pipeline, PipelineConfig
 from src.tools.dataloaders import (
@@ -51,14 +49,6 @@ def update_assign_based_on_decision(data, decision):
         else:
             data[decision["claim_1"]["uid"]]["label"] = 0
             data[decision["claim_2"]["uid"]]["label"] = 1
-    else:
-        assert decision["type"] == "implication"
-        if decision["score"] > 0:
-            data[decision["claim_1"]["uid"]]["label"] = 1
-            data[decision["claim_2"]["uid"]]["label"] = 1
-        else:
-            data[decision["claim_1"]["uid"]]["label"] = 0
-            data[decision["claim_2"]["uid"]]["label"] = 0
     return data
 
 
@@ -79,9 +69,7 @@ def pick_two_inconsistent_claims(data):
         for i in range(len(group)):
             for j in range(i + 1, len(group)):
                 
-                if (group[i]["vanilla_label"] != group[j]["vanilla_label"]) and (
-                    group[i]["label"] == group[j]["label"]
-                ):
+                if  (group[i]["label"] == group[j]["label"]) and (group[i] == 1):
                     inconsistent_pairs[len(inconsistent_pairs)] = {
                         "claim_1": group[i],
                         "claim_2": group[j],
@@ -93,7 +81,6 @@ def pick_two_inconsistent_claims(data):
 
 
 def propose_consistencyfix(
-    model,
     name=None,
     iter=None,
     assignment=None,
@@ -104,7 +91,6 @@ def propose_consistencyfix(
         pipeline_name += "-" + name
     pipeline_config = PipelineConfig(
         pipeline_name,
-        anthropic_num_threads=40,
         openai_fraction_rate_limit=0.99,
         num_problems=None,
         use_cache=use_cache,
@@ -115,22 +101,12 @@ def propose_consistencyfix(
         "get_assign", load_assignments, assignment
     )
 
-    pick_claims = pipeline.add_transformation_step(
+    pipeline.add_transformation_step(
         "pick_two_inconsistent_claims",
         pick_two_inconsistent_claims,
         dependencies=[initial_assign],
     )
 
-    get_decision = pipeline.add_query_step(
-        "decisions",
-        model,
-        get_decision_prompt,
-        extract_decision_logprobs,
-        dependencies=[pick_claims],
-        logprobs=20,
-        max_tokens=1,
-        use_cache=use_cache,
-    )
     return pipeline
 
 def run_consistencyfix(
@@ -150,7 +126,6 @@ def run_consistencyfix(
 
     pipeline_config = PipelineConfig(
         pipeline_name,
-        anthropic_num_threads=40,
         openai_fraction_rate_limit=0.99,
         num_problems=None,
         use_cache=use_cache,
@@ -176,9 +151,7 @@ def run_consistencyfix(
             "prompt",
             "question",
             "choice",
-            "choice_2",
             "consistency_id",
-            "source",
             "label",
             "vanilla_label",
         ]
