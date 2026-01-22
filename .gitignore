@@ -133,7 +133,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 SECRETS
+VLLM_DEPLOYMENT_GUIDE.md
 data/
+!data/global_opinion_data.csv
 .DS_Store
 pyrightconfig.json
 *.db
