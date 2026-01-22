@@ -1,4 +1,3 @@
-# %%
 import asyncio
 import json
 import logging
@@ -9,7 +8,6 @@ from datetime import datetime
 from itertools import cycle
 from traceback import format_exc
 from typing import Optional, Union
-
 import attrs
 import openai
 import requests
@@ -22,51 +20,11 @@ from core.llm_api.base_llm import (
     PRINT_COLORS,
     LLMResponse,
     ModelAPIProtocol,
-    messages_to_single_prompt,
 )
 
 OAIChatPrompt = list[dict[str, str]]
 OAIBasePrompt = Union[str, list[str]]
 LOGGER = logging.getLogger(__name__)
-
-
-def count_tokens(text: str) -> int:
-    return len(tiktoken.get_encoding("cl100k_base").encode(text))
-
-
-def price_per_token(model_id: str) -> tuple[float, float]:
-    """
-    Returns the (input token, output token) price for the given model id.
-    """
-    if model_id == "gpt-4-1106-preview":
-        prices = 0.01, 0.03
-    elif model_id == "gpt-3.5-turbo-1106":
-        prices = 0.001, 0.002
-    elif model_id.startswith("gpt-4"):
-        prices = 0.03, 0.06
-    elif model_id.startswith("gpt-4-32k"):
-        prices = 0.06, 0.12
-    elif model_id.startswith("gpt-3.5-turbo-16k"):
-        prices = 0.003, 0.004
-    elif model_id.startswith("gpt-3.5-turbo"):
-        prices = 0.0015, 0.002
-    elif model_id == "davinci-002":
-        prices = 0.002, 0.002
-    elif model_id == "babbage-002":
-        prices = 0.0004, 0.0004
-    elif model_id == "text-davinci-003" or model_id == "text-davinci-002":
-        prices = 0.02, 0.02
-    elif "ft:gpt-3.5-turbo" in model_id:
-        prices = 0.012, 0.016
-    elif "llama" in model_id.lower() or "mixtral" in model_id.lower():
-        prices = 0.0015, 0.002
-    elif "o1" in model_id.lower():
-        prices = 0.01, 0.03
-    else:
-        prices = 0, 0
-        # raise ValueError(f"Invalid model id: {model_id}")
-
-    return tuple(price / 1000 for price in prices)
 
 
 @attrs.define()
@@ -282,77 +240,6 @@ class OpenAIModel(ModelAPIProtocol):
             return await self.__llama_call__(
                 model_ids, prompt, print_prompt_and_response, max_attempts, **kwargs
             )
-        kwargs = {
-            key: value
-            for key, value in kwargs.items()
-            if key not in ("save_path", "metadata")
-        }
-        start = time.time()
-
-        async def attempt_api_call():
-            for model_id in cycle(model_ids):
-                async with self.lock_consume:
-                    request_capacity, token_capacity = (
-                        self.request_capacity[model_id],
-                        self.token_capacity[model_id],
-                    )
-                    if request_capacity.geq(1) and token_capacity.geq(token_count):
-                        request_capacity.consume(1)
-                        token_capacity.consume(token_count)
-                    else:
-                        await asyncio.sleep(0.01)
-                        continue  # Skip this iteration if the condition isn't met
-
-                # Make the API call outside the lock
-                return await asyncio.wait_for(
-                    self._make_api_call(prompt, model_id, start, **kwargs), timeout=120
-                )
-
-        model_ids.sort(
-            key=lambda model_id: price_per_token(model_id)[0]
-        )  # Default to cheapest model
-        async with self.lock_add:
-            for model_id in model_ids:
-                await self.add_model_id(model_id)
-        if "tool" in prompt[0]:
-            kwargs["tools"] = prompt[0]["tool"]
-        if "response_format" in prompt[0]:
-            kwargs['response_format'] = prompt[0]['response_format']
-        prompt = self._process_prompt(prompt)
-
-        token_count = self._count_prompt_token_capacity(prompt, **kwargs)
-        assert (
-            max(self.token_capacity[model_id].refresh_rate for model_id in model_ids)
-            >= token_count
-        ), "Prompt is too long for any model to handle."
-        # prompt_file = self._create_prompt_history_file(prompt)
-        responses: Optional[list[LLMResponse]] = None
-        for i in range(max_attempts):
-            try:
-                responses = await attempt_api_call()
-            except Exception as e:
-                error_info = f"Exception Type: {type(e).__name__}, Error Details: {str(e)}, Traceback: {format_exc()}"
-                LOGGER.warn(
-                    f"Encountered API error: {error_info}.\nRetrying now. (Attempt {i})"
-                )
-                await asyncio.sleep(1.5**i)
-            else:
-                break
-
-        if responses is None:
-            raise RuntimeError(
-                f"Failed to get a response from the API after {max_attempts} attempts."
-            )
-
-        if self.print_prompt_and_response or print_prompt_and_response:
-            self._print_prompt_and_response(prompt, responses)
-
-        end = time.time()
-        LOGGER.debug(f"Completed call to {model_id} in {end - start}s.")
-        return [
-            {"prompt": prompt, "response": response.to_dict()} for response in responses
-        ]
-
 
 _GPT_4_MODELS = [
     "gpt-4o",
@@ -477,9 +364,6 @@ class OpenAIChatModel(OpenAIModel):
         api_response: OpenAICompletion = await openai.ChatCompletion.acreate(messages=prompt, model=model_id, organization=self.organization, **params)  # type: ignore
         api_duration = time.time() - api_start
         duration = time.time() - start_time
-        context_token_cost, completion_token_cost = price_per_token(model_id)
-        context_cost = api_response.usage.prompt_tokens * context_token_cost
-        completion_cost = api_response.usage.completion_tokens * completion_token_cost
         return [
             LLMResponse(
                 model_id=model_id,
@@ -489,7 +373,6 @@ class OpenAIChatModel(OpenAIModel):
                 stop_reason=choice.finish_reason,
                 api_duration=api_duration,
                 duration=duration,
-                cost=context_cost + completion_cost,
                 logprobs=self.convert_top_logprobs(choice.logprobs)
                 if choice.logprobs is not None
                 else None,
@@ -510,122 +393,3 @@ class OpenAIChatModel(OpenAIModel):
                 cprint(f"==RESPONSE {i + 1} ({response.model_id}):", "white")
             cprint(response.completion, PRINT_COLORS["assistant"], attrs=["bold"])
         print()
-
-
-BASE_MODELS = {
-    "meta-llama/Llama-3.1-8B",
-    "meta-llama/Llama-3.1-70B",
-}
-
-
-class OpenAIBaseModel(OpenAIModel):
-    def _process_prompt(
-        self, prompt: Union[OAIBasePrompt, OAIChatPrompt]
-    ) -> OAIBasePrompt:
-        if isinstance(prompt, list) and isinstance(prompt[0], dict):
-            return messages_to_single_prompt(prompt)
-        return prompt
-
-    def _assert_valid_id(self, model_id: str):
-        assert model_id in BASE_MODELS, f"Invalid model id: {model_id}"
-
-    @retry(stop=stop_after_attempt(8), wait=wait_fixed(2))
-    async def _get_dummy_response_header(self, model_id: str):
-        url = "https://api.openai.com/v1/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {openai.api_key}",
-            "OpenAI-Organization": self.organization,
-        }
-        data = {"model": model_id, "prompt": "a", "max_tokens": 1}
-        response = requests.post(url, headers=headers, json=data)
-        if "gpt" in model_id and "x-ratelimit-limit-tokens" not in response.headers:
-            raise RuntimeError("Failed to get dummy response header")
-        return response.headers
-
-    @staticmethod
-    def _count_prompt_token_capacity(prompt: OAIBasePrompt, **kwargs) -> int:
-        max_tokens = kwargs.get("max_tokens", 15)
-        n = kwargs.get("n", 1)
-        completion_tokens = n * max_tokens
-
-        tokenizer = tiktoken.get_encoding("cl100k_base")
-        if isinstance(prompt, str):
-            prompt_tokens = len(tokenizer.encode(prompt))
-            return prompt_tokens + completion_tokens
-        else:
-            prompt_tokens = sum(len(tokenizer.encode(p)) for p in prompt)
-            return prompt_tokens + completion_tokens
-
-    async def _make_api_call(
-        self, prompt: OAIBasePrompt, model_id, start_time, **params
-    ) -> list[LLMResponse]:
-        LOGGER.debug(f"Making {model_id} call with {self.organization}")
-        api_start = time.time()
-        api_response: OpenAICompletion = await openai.Completion.acreate(prompt=prompt, model=model_id, organization=self.organization, **params)  # type: ignore
-        api_duration = time.time() - api_start
-        duration = time.time() - start_time
-        if "gpt" not in model_id:
-            return [
-                LLMResponse(
-                    model_id=model_id,
-                    completion=choice.text,
-                    stop_reason=choice.finish_reason,
-                    api_duration=api_duration,
-                    duration=duration,
-                    cost=0,
-                    logprobs=choice.logprobs.top_logprobs
-                    if choice.logprobs is not None
-                    else None,
-                )
-                for choice in api_response.choices
-            ]
-        else:
-            context_token_cost, completion_token_cost = price_per_token(model_id)
-            context_cost = api_response.usage.prompt_tokens * context_token_cost
-            return [
-                LLMResponse(
-                    model_id=model_id,
-                    completion=choice.text,
-                    stop_reason=choice.finish_reason,
-                    api_duration=api_duration,
-                    duration=duration,
-                    cost=context_cost / len(api_response.choices)
-                    + count_tokens(choice.message.content) * completion_token_cost,
-                    logprobs=choice.logprobs.top_logprobs
-                    if choice.logprobs is not None
-                    else None,
-                )
-                for choice in api_response.choices
-            ]
-
-    @staticmethod
-    def _print_prompt_and_response(prompt: OAIBasePrompt, responses: list[LLMResponse]):
-        prompt_list = prompt if isinstance(prompt, list) else [prompt]
-        responses_per_prompt = len(responses) // len(prompt_list)
-        responses_list = [
-            responses[i : i + responses_per_prompt]
-            for i in range(0, len(responses), responses_per_prompt)
-        ]
-        for i, (prompt, response_list) in enumerate(zip(prompt_list, responses_list)):
-            if len(prompt_list) > 1:
-                cprint(f"==PROMPT {i + 1}", "white")
-            if len(response_list) == 1:
-                cprint(f"=={response_list[0].model_id}", "white")
-                cprint(prompt, PRINT_COLORS["user"], end="")
-                cprint(
-                    response_list[0].completion,
-                    PRINT_COLORS["assistant"],
-                    attrs=["bold"],
-                )
-            else:
-                cprint(prompt, PRINT_COLORS["user"])
-                for j, response in enumerate(response_list):
-                    cprint(f"==RESPONSE {j + 1} ({response.model_id}):", "white")
-                    cprint(
-                        response.completion, PRINT_COLORS["assistant"], attrs=["bold"]
-                    )
-            print()
-
-
-# %%

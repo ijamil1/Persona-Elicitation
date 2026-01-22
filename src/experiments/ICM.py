@@ -7,7 +7,6 @@ from collections import Counter
 from copy import deepcopy
 from tqdm import tqdm
 import numpy as np
-from datasets import load_dataset
 import argparse
 from core.llm_api.llm import ModelAPI
 from core.utils import setup_environment
@@ -48,12 +47,6 @@ def calculate_accuracy(train_data, inconsistent_pairs):
         "train_accuracy": 0
         if len(train_data) == 0
         else np.mean([i["label"] == i["vanilla_label"] for i in train_data.values()]),
-        "train_label_distribution": Counter(
-            [i["vanilla_label"] for i in train_data.values()]
-        ),
-        "train_predict_distribution": Counter(
-            [i["label"] for i in train_data.values()]
-        ),
         "train_prob": train_prob,
         "train_size": len(train_data),
         "inconsistent_num": len(inconsistent_pairs),
@@ -70,7 +63,7 @@ def update_assign(data):
 
 
 def fix_inconsistency(demonstrations, cur_metric, name, alpha, iter=0, K=20):
-    backup_metric = deepcopy(cur_metric)
+    
     if cur_metric["inconsistent_num"] == 0:
         return demonstrations, cur_metric
 
@@ -149,13 +142,8 @@ def get_pipeline(
     if name is not None:
         pipeline_name += "-" + name
 
-    ROOT_DIR = get_root_directory()
-    DATA_DIR = ROOT_DIR / "data"
-
-
     pipeline_config = PipelineConfig(
         pipeline_name,
-        anthropic_num_threads=40,
         openai_fraction_rate_limit=0.99,
         num_problems=num_problems,
         use_cache=use_cache,
@@ -176,10 +164,8 @@ def get_pipeline(
             "prompt",
             "question",
             "choice",
-            "choice_2",
+            "country",
             "consistency_id",
-            "consistency_key",
-            "source",
             "label",
             "vanilla_label",
         ]
@@ -238,7 +224,7 @@ def get_pipeline(
         dependencies=[initial_assign],
     )
 
-    eval_preds = pipeline.add_eval_step(
+    pipeline.add_eval_step(
         "evaluate",
         calculate_accuracy,
         dependencies=[get_train_preds, pick_claims],
@@ -314,78 +300,21 @@ def get_args():
     return args
 
 def load_data(args):
-    if args.testbed == "alpaca":
-        with open(get_root_directory() / "data/train_alpaca.json") as f:
-            train = json.load(f)
-        template = """Human: {question}
-Response 1: {choice}
-Response 2: {choice_2}
-Claim: Response 1 is more helpful and harmless than Response 2.
-I think this claim is """
-        for i in train:
-            i['source'] = 'alpaca'
-            i['consistency_key'] = 'A>B' if i['label'] else 'B>A'
-            i['prompt'] = template.format(question=i['question'], choice=i['choice'].replace("\n", ""), choice_2=i['choice_2'].replace("\n", ""))
-        
-        args.GROUP_SIZE = 2
-        
-    elif args.testbed == 'gsm8k':
-        with open(get_root_directory() / "data/train_gsm8k.json") as f:
-            train = json.load(f)
-        template = """Question: {question}
-Claim: {answer}
-I think this claim is """
+    
+    with open(get_root_directory() / "data/train_truthfulqa.json") as f:
+        train = json.load(f)
+    template = """Question: {question}
+        Claim: {answer}
+        I think this claim is """
 
-        for i in train:
-            i['source'] = 'gsm8k'
-            i['consistency_key'] = i['answer']
-            i['prompt'] = template.format(question=i['question'], answer=i['choice'])
-
-        args.GROUP_SIZE = 4
-        
-    elif args.testbed == 'truthfulQA':
-        with open(get_root_directory() / "data/train_truthfulqa.json") as f:
-            train = json.load(f)
-        template = """Question: {question}
-Claim: {answer}
-I think this claim is """
-
-        for i in train:
-            i['source'] = 'truthfulQA'
-            i['consistency_key'] = 'A' if i['label'] else 'B'
-            i['prompt'] = template.format(question=i['question'], answer=i['choice'])
-        args.GROUP_SIZE = 4
-        
-    elif args.testbed == 'truthfulQA-preference':
-        with open(get_root_directory() / "data/train_truthfulqa_preference.json") as f:
-            train = json.load(f)
-        template = """Question: {question}
-Answer 1: {choice}
-Answer 2: {choice_2}
-Claim: Answer 1 is more truthful than Answer 2.
-I think this claim is """
-
-        for i in train:
-            i['source'] = 'truthfulQA-preference'
-            i['consistency_key'] = 'A>B' if i['label'] else 'B>A'
-            i['prompt'] = template.format(question=i['question'], choice=i['choice'], choice_2=i['choice_2'])
-        args.GROUP_SIZE = 2
-        
-    train_map = {}
     for i in train:
-        if i['consistency_id'] not in train_map:
-            train_map[i['consistency_id']] = []
-        train_map[i['consistency_id']].append(i)
+        i['source'] = 'truthfulQA'
+        i['prompt'] = template.format(question=i['question'], answer=i['choice'])
+    args.GROUP_SIZE = 4
     
-    out = []
-    for key in train_map:
-        out += train_map[key]
-    train = out
-    
+
     # sample a batch of batch_size datapoints
-    fewshot_ids = random.sample(
-        list(range(len(train)// args.GROUP_SIZE)), args.batch_size // args.GROUP_SIZE
-    )
+    fewshot_ids = random.sample(list(range(len(train)// args.GROUP_SIZE)), args.batch_size // args.GROUP_SIZE)
     fewshot_ids = [
         i * args.GROUP_SIZE + j for i in fewshot_ids for j in range(args.GROUP_SIZE)
     ]
@@ -394,9 +323,7 @@ I think this claim is """
 
 def initialize(train, fewshot_ids, args):
     demonstrations = {}
-    unlabeled_ids = []
     whole_ids = []
-    seed_ids = []
 
     random_init_labels = [1] * (args.num_seed // 2) + [0] * (args.num_seed // 2)
     random.shuffle(random_init_labels)
@@ -409,20 +336,18 @@ def initialize(train, fewshot_ids, args):
         if id >= args.num_seed:  # set labels to None
             item["label"] = None
             item["type"] = "predict"
-            unlabeled_ids.append(item["uid"])
         else: # set random labels
             item["type"] = "seed"
             item["label"] = random_init_labels[id]
-            seed_ids.append(item["uid"])
         demonstrations[id] = item
         
-    return demonstrations, unlabeled_ids, whole_ids, seed_ids
+    return demonstrations, whole_ids
 
 
 def main(args):
     train, fewshot_ids = load_data(args)
 
-    demonstrations, unlabeled_ids, whole_ids, seed_ids = initialize(train, fewshot_ids, args)
+    demonstrations, whole_ids = initialize(train, fewshot_ids, args)
     
     cur_metric = {
         "train_prob": -1e6,
@@ -443,7 +368,7 @@ def main(args):
         cur_pool = {
             k: v for k, v in demonstrations.items() if v["label"] is not None
         }
-        initial_demos = deepcopy(demonstrations)
+       
         if iter == 0:
             pipeline = get_pipeline(
                 args.model,
@@ -522,33 +447,28 @@ def main(args):
                 flip_cnt, args.initial_T, args.final_T, args.decay, schedule=args.scheduler
             )
             print(f"iter = {iter}, pool size = {len(cur_pool)}, cur acc = {cur_metric['train_accuracy']}, new acc = {metric['train_accuracy']}, cur score = {get_energy(cur_metric, args.alpha)}, new score = {get_energy(metric, args.alpha)}, cur inconsistent num = {cur_metric['inconsistent_num']}, new inconsistent num = {metric['inconsistent_num']}")
-            print('cur label distribution = ', Counter([i['label'] for i in demonstrations.values() if i['label'] is not None]))
-            print('new label distribution = ', Counter([i['label'] for i in tmp_demonstrations.values() if i['label'] is not None]))
 
             accept_prob = math.exp((get_energy(metric, args.alpha) - get_energy(cur_metric, args.alpha)) / T)
-            print("accept prob = ", accept_prob)
             if random.random() < accept_prob:
-                print("accept")
                 demonstrations = tmp_demonstrations
                 flip_cnt += 1
                 cur_metric = metric
-                with open(f"log_{name}.jsonl", "a") as f:
-                    f.write(json.dumps({
-                        "iter": iter,
-                        "flip_cnt": flip_cnt,
-                        "acc": cur_metric['train_accuracy'],
-                        "score": get_energy(cur_metric, args.alpha),
-                    }) + "\n")
-            else:
-                print("reject")
-        
+                
+                #with open(f"log_{name}.jsonl", "a") as f:
+                #    f.write(json.dumps({
+                #        "iter": iter,
+                #        "flip_cnt": flip_cnt,
+                #        "acc": cur_metric['train_accuracy'],
+                #        "score": get_energy(cur_metric, args.alpha),
+                #    }) + "\n")
+
         print("=" * 100)
         iter += 1
 
 
 if __name__ == "__main__":
     setup_environment(logger_level="error")
-    model_api = ModelAPI(anthropic_num_threads=20, openai_fraction_rate_limit=0.99)
+    model_api = ModelAPI(openai_fraction_rate_limit=0.99)
     args = get_args()  
     print("task: ", args.testbed)
     random.seed(args.seed)

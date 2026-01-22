@@ -34,21 +34,15 @@ LOGGING_LEVELS = {
 
 
 def setup_environment(
-    anthropic_tag: str = "ANTHROPIC_API_KEY",
     logger_level: str = "info",
     openai_tag: str = "API_KEY",
-    mistral_tag: str = "MISTRAL_API_KEY",
-    replicate_tag: str = "REPLICATE_API_KEY",
     organization: str = None,
 ):
     setup_logging(logger_level)
     load_secrets(
         SECRETS_FILE_PATH,
-        anthropic_tag,
         logger_level,
         openai_tag,
-        mistral_tag,
-        replicate_tag,
         organization,
     )
 
@@ -78,11 +72,8 @@ def setup_logging(level_str):
 
 def load_secrets(
     file_path=SECRETS_FILE_PATH,
-    anthropic_tag: str = "ANTHROPIC_API_KEY",
     logger_level: str = "info",
     openai_tag: str = "API_KEY",
-    mistral_tag: str = "MISTRAL_API_KEY",
-    replicate_tag: str = "REPLICATE_API_KEY",
     organization: str = None,
 ):
     secrets = {}
@@ -93,10 +84,7 @@ def load_secrets(
 
     openai.api_key = secrets[openai_tag]
     os.environ['LLAMA_API_BASE'] = secrets['LLAMA_API_BASE']
-    # replicate.api_token = secrets[replicate_tag]
-    # os.environ["ANTHROPIC_API_KEY"] = secrets[anthropic_tag]
-    # os.environ["MISTRAL_API_KEY"] = secrets[mistral_tag]
-    # os.environ["REPLICATE_API_KEY"] = secrets[replicate_tag]
+    
 
     if organization is not None:
         openai.organization = secrets[organization]
@@ -139,47 +127,6 @@ def save_jsonl(file_path, data):
             f.write("\n")
 
 
-def delete_old_prompt_files(
-    path: str = PROMPT_HISTORY, max_age_minutes: int = 60, keep_recent: int = 50
-):
-    """
-    Delete all files in the folder that:
-    - Are more than max_age_minutes old
-    - AND are not one of the keep_recent most recent files
-    """
-    if not os.path.exists(path):
-        return
-
-    # Get all files in the folder with their full paths and creation times
-    files = [
-        {
-            "path": os.path.join(path, filename),
-            "ctime": os.path.getctime(os.path.join(path, filename)),
-        }
-        for filename in os.listdir(path)
-        if os.path.isfile(os.path.join(path, filename))
-    ]
-
-    # Sort files by creation time
-    files.sort(key=lambda f: f["ctime"], reverse=True)
-
-    # Current time in seconds since epoch
-    now = time.time()
-
-    deleted_count = 0
-    for index, file_info in enumerate(files):
-        # File age in minutes
-        age_minutes = (now - file_info["ctime"]) / 60
-
-        # If file is older than x_minutes and is not one of the y_most_recent files, delete it
-        if age_minutes > max_age_minutes and index >= keep_recent:
-            os.remove(file_info["path"])
-            deleted_count += 1
-
-    if deleted_count > 0:
-        print(f"Deleted {deleted_count} old prompt files")
-
-
 def typer_async(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -212,28 +159,3 @@ async def async_function_with_retry(function, *args, **kwargs):
     return await function(*args, **kwargs)
 
 
-def log_model_timings(api_handler, save_location="./model_timings.png"):
-    if len(api_handler.model_timings) > 0:
-        plt.figure(figsize=(10, 6))
-        for model in api_handler.model_timings:
-            timings = np.array(api_handler.model_timings[model])
-            wait_times = np.array(api_handler.model_wait_times[model])
-            LOGGER.info(
-                f"{model}: response {timings.mean():.3f}, waiting {wait_times.mean():.3f} (max {wait_times.max():.3f}, min {wait_times.min():.3f})"
-            )
-            plt.plot(
-                timings, label=f"{model} - Response Time", linestyle="-", linewidth=2
-            )
-            plt.plot(
-                wait_times, label=f"{model} - Waiting Time", linestyle="--", linewidth=2
-            )
-        plt.legend()
-        plt.title("Model Performance: Response and Waiting Times")
-        plt.xlabel("Sample Number")
-        plt.ylabel("Time (seconds)")
-        plt.savefig(save_location, dpi=300)
-        plt.close()
-
-
-def softmax(x):
-    return np.exp(x) / np.sum(np.exp(x), axis=0)

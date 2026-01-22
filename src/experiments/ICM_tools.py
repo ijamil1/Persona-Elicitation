@@ -17,11 +17,8 @@ from src.model_querying.solution_extraction import (
 )
 from src.pipeline.pipeline import Pipeline, PipelineConfig
 from src.tools.dataloaders import (
-    load_assignments,
-    load_problems_from_json,
-    load_problems_from_json_ids,
+    load_assignments
 )
-from src.tools.path_utils import get_default_results_directory, get_root_directory
 
 
 def calculate_accuracy(train_data, inconsistent_pairs):
@@ -70,6 +67,8 @@ def pick_two_inconsistent_claims(data):
 
     consistency_groups = {}
     for claim in claims:
+        if claim['label'] is None:
+            continue
         cid = claim["consistency_id"]
         if cid not in consistency_groups:
             consistency_groups[cid] = []
@@ -77,32 +76,17 @@ def pick_two_inconsistent_claims(data):
 
     inconsistent_pairs = {}
     for group in consistency_groups.values():
-        labels = [claim["vanilla_label"] for claim in group]
         for i in range(len(group)):
             for j in range(i + 1, len(group)):
-                if (group[i]['consistency_key'] != group[j]['consistency_key']) and (
-                    (group[i]['label'] == group[j]['label'] == 1) or 
-                    (
-                        (group[i]['consistency_key'] in ['A>B', 'B>A']) and (group[i]['label'] == group[j]['label'] == 0) # in comparative tasks, at least one of the two claims is correct
-                    )
+                
+                if (group[i]["vanilla_label"] != group[j]["vanilla_label"]) and (
+                    group[i]["label"] == group[j]["label"]
                 ):
-                # if (group[i]["vanilla_label"] != group[j]["vanilla_label"]) and (
-                    # group[i]["label"] == group[j]["label"]
-                # ):
                     inconsistent_pairs[len(inconsistent_pairs)] = {
                         "claim_1": group[i],
                         "claim_2": group[j],
                         "consistency_id": group[i]["consistency_id"],
                         "type": "contradiction",
-                    }
-                elif (group[i]["consistency_key"] == group[j]["consistency_key"]) and (
-                    group[i]["label"] != group[j]["label"]
-                ):
-                    inconsistent_pairs[len(inconsistent_pairs)] = {
-                        "claim_1": group[i],
-                        "claim_2": group[j],
-                        "consistency_id": group[i]["consistency_id"],
-                        "type": "implication",
                     }
     random.shuffle(inconsistent_pairs)
     return inconsistent_pairs

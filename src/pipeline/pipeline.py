@@ -10,21 +10,8 @@ from core.llm_api.llm import ModelAPI
 from src.datatypes.enums import Language
 from src.runners.query_model import QueryConfigBuilder, query_model
 from src.tools.dataloaders import read_from_cache, save_to_cache
-from src.tools.path_utils import get_root_directory
 
 logger = logging.getLogger(__name__)
-
-
-def in_notebook():
-    try:
-        from IPython import get_ipython
-
-        if get_ipython() is None or "IPKernelApp" not in get_ipython().config:
-            return False
-    except ImportError:
-        return False
-    return True
-
 
 class Task:
     def __init__(self, name, func, use_cache, dependencies=[]):
@@ -56,21 +43,17 @@ class PipelineConfig:
     def __init__(
         self,
         name,
-        anthropic_num_threads=2,
         openai_fraction_rate_limit=0.99,
         use_cache=True,
         language=Language.PYTHON,
         num_problems=None,
         problem_ids=None,
         num_open_files=1000000,
-        organization="NYU_ORG",
         print_prompt_and_response=False,
         api_base=None,
     ):
         self.name = name
-        self.anthropic_num_threads = anthropic_num_threads
         self.openai_fraction_rate_limit = openai_fraction_rate_limit
-        self.organization = organization
         self.print_prompt_and_response = print_prompt_and_response
         self.use_cache = use_cache
         self.language = language
@@ -78,7 +61,6 @@ class PipelineConfig:
         self.problem_ids = problem_ids
         self.num_open_files = num_open_files
         self.api_base = api_base
-        self.play_sound = in_notebook()
 
 
 class Pipeline:
@@ -88,14 +70,10 @@ class Pipeline:
         self.step_names = set()
         self.results = {}
         self.model_api = ModelAPI(
-            self.config.anthropic_num_threads,
             self.config.openai_fraction_rate_limit,
-            self.config.organization,
             self.config.print_prompt_and_response,
         )
-        self.file_sem = asyncio.BoundedSemaphore(self.config.num_open_files)
-        self.cost = {"red": 0, "blue": 0}
-
+      
     def add_load_data_step(
         self, name, dataloader_fn, data_location, dependencies=[], use_cache=None
     ):
@@ -252,18 +230,6 @@ class Pipeline:
             task.index = i
         return sorted_tasks
 
-    def add_cost_data(self, team, response_dict):
-        cost = sum(
-            [response["response"]["cost"] for response in response_dict.values()]
-        )
-        if team is not None:
-            if team not in self.cost:
-                self.cost[team] = 0
-            self.cost[team] += cost
-            overall_team = team.split("_")[0]
-            if overall_team != team:
-                self.cost[overall_team] += cost
-
     def set_use_cache(self, tasks):
         # This is called after tasks.sort, so we are guaranteed to process all
         # dependencies before each task itself.
@@ -278,21 +244,6 @@ class Pipeline:
             for dep in task.dependencies:
                 if not dep.use_cache:
                     task.use_cache = False
-
-    def speak(self, message):
-        if self.config.play_sound:
-            from IPython.display import Javascript, display
-
-            display(
-                Javascript(
-                    f"""
-                    if(window.speechSynthesis) {{
-                        var synth = window.speechSynthesis;
-                        synth.speak(new window.SpeechSynthesisUtterance('{message}'));
-                    }}
-                    """
-                )
-            )
 
     async def run(self):
         steps = self.topological_sort_tasks(self.steps)
