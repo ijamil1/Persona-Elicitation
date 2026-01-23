@@ -73,7 +73,7 @@ def setup_logging(level_str):
 def load_secrets(
     file_path=SECRETS_FILE_PATH,
     logger_level: str = "info",
-    openai_tag: str = "API_KEY",
+    openai_tag: str = "TOGETHER_API_KEY",
     organization: str = None,
 ):
     secrets = {}
