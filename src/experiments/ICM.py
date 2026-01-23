@@ -573,18 +573,33 @@ async def icm_main(args, train, fewshot_ids, test):
     return test_accuracy, label_assignments, demonstrations
 
 
-async def golden_supervision_main(args, train, fewshot_ids, test):
+async def golden_supervision_main(args, train, fewshot_ids, test, num_consistency_ids=10):
     """
     Benchmark using golden (ground truth) labels for demonstrations.
+
+    Samples a subset of consistency_ids to avoid context overload which can
+    degrade in-context learning performance.
     """
     print("\nRunning golden supervision benchmark...")
 
-    demonstrations = {}
+    # Build all demonstrations first
+    all_demonstrations = {}
     for id, i in enumerate(fewshot_ids):
         item = train[i]
         item["uid"] = id
-        # Keep the ground truth label
-        demonstrations[id] = item
+        all_demonstrations[id] = item
+
+    # Get unique consistency_ids and sample a subset
+    consistency_ids = list({item['consistency_id'] for item in all_demonstrations.values()})
+    rng = random.Random(args.seed)
+    sampled_cids = rng.sample(consistency_ids, min(num_consistency_ids, len(consistency_ids)))
+    sampled_cids_set = set(sampled_cids)
+
+    # Filter demonstrations to only include items from sampled consistency_ids
+    demonstrations = {
+        uid: item for uid, item in all_demonstrations.items()
+        if item['consistency_id'] in sampled_cids_set
+    }
 
     max_uid = max(demonstrations.keys())
     correct_cnt = 0
