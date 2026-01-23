@@ -455,10 +455,12 @@ async def icm_main(args, train, fewshot_ids, test):
     print('init random labels = ', Counter([i['label'] for i in demonstrations.values() if i['type'] == 'seed']),
           'init label acc = ', np.mean([i['label'] == i['vanilla_label'] for i in demonstrations.values() if i['type'] == 'seed']))
 
-    name = f"{args.country}-K{args.K}_seed{args.seed}-initialsize{args.num_seed}-weighted{args.alpha}-decay{args.decay}-initialT{args.initial_T}-finalT{args.final_T}-scheduler{args.scheduler}"
+    name = f"{args.country}-K{args.K}-initialsize{args.num_seed}-weighted{args.alpha}-decay{args.decay}-initialT{args.initial_T}-finalT{args.final_T}-scheduler{args.scheduler}"
 
     iter_count = 0
     flip_cnt = 0
+    reject_cnt = 0
+    new_label_sample = 0 #flip_cnt + reject_cnt = new_label_sample
 
     for _ in tqdm(range(args.K), desc="ICM searching"):
         cur_pool = {k: v for k, v in demonstrations.items() if v["label"] is not None}
@@ -501,6 +503,7 @@ async def icm_main(args, train, fewshot_ids, test):
         )
 
         if demonstrations[example_id]["label"] != new_label:
+            new_label_sample += 1
             tmp_demonstrations = deepcopy(demonstrations)
             tmp_demonstrations[example_id]["label"] = new_label
 
@@ -548,6 +551,8 @@ async def icm_main(args, train, fewshot_ids, test):
                 demonstrations = tmp_demonstrations
                 flip_cnt += 1
                 cur_metric = metric
+            else:
+                reject_cnt+=1
 
         iter_count += 1
 
@@ -568,7 +573,7 @@ async def icm_main(args, train, fewshot_ids, test):
     test_accuracy = correct_cnt / len(test)
     print(f"ICM Test Accuracy: {test_accuracy:.4f}")
 
-    return test_accuracy, label_assignments, demonstrations
+    return test_accuracy, label_assignments, reject_cnt, new_label_sample
 
 
 async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_consistency_ids=10):
@@ -750,7 +755,7 @@ async def async_main(args, seed, country):
     print("\n" + "="*50)
     print("Running ICM Algorithm")
     print("="*50)
-    icm_acc, icm_labels, demonstrations = await icm_main(args, train, fewshot_ids, test)
+    icm_acc, icm_labels, reject_cnt, new_label_sample = await icm_main(args, train, fewshot_ids, test)
 
     # Run golden supervision benchmark
     print("\n" + "="*50)
@@ -778,6 +783,8 @@ async def async_main(args, seed, country):
     print("\n" + "="*50)
     print(f"RESULTS SUMMARY -- {args.country}")
     print("="*50)
+    print(f"ICM new labels sampled {new_label_sample} times out of {args.K}")
+    print(f"ICM reject cnt: {reject_cnt}")
     print(f"ICM (Unsupervised):      {icm_acc*100:.2f}%")
     print(f"Golden Supervision:      {golden_acc*100:.2f}%")
     print(f"Zero-shot (Chat):        {chat_acc*100:.2f}%")
@@ -821,6 +828,8 @@ if __name__ == "__main__":
         # Collect results for each country
         all_results = {}
         for country in countries:
+            if country != 'United States':
+                continue
             print(f"\n{'#'*60}")
             print(f"# Processing country: {country}")
             print(f"{'#'*60}")
