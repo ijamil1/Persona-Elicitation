@@ -610,9 +610,9 @@ async def zero_shot_chat_main(args, test):
 
     # Determine instruct model based on base model
     model_mapping = {
-        'meta-llama/Llama-3.1-8B': 'meta-llama/Llama-3.1-8B-Instruct-Turbo',
-        'meta-llama/Llama-3.1-70B': 'meta-llama/Llama-3.1-70B-Instruct-Turbo',
-        'meta-llama/Llama-3.1-405B': 'meta-llama/Llama-3.1-405B-Instruct-Turbo',
+        'meta-llama/Llama-3.1-8B': 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
+        'meta-llama/Llama-3.1-70B': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+        'meta-llama/Llama-3.1-405B': 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo',
     }
     instruct_model = model_mapping.get(args.model, args.model + '-Instruct-Turbo')
 
