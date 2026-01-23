@@ -320,7 +320,7 @@ def get_temperature(iteration, initial_temp, final_temp, decay_rate, schedule="e
     if schedule == "exp":
         return max(final_temp, initial_temp * (decay_rate**iteration))
     elif schedule == "log":
-        return max(final_temp, initial_temp / (1 + 4 * np.log(1 + iteration)))
+        return max(final_temp, initial_temp / (1 + 1.5 * np.log(1 + iteration)))
     else:
         assert False
 
@@ -492,6 +492,9 @@ async def icm_main(args, train, fewshot_ids, test):
                     for j in same_consistency_group_ids:
                         if j not in cur_pool:
                             weights[j] = 100
+                elif i not in cur_pool:
+                    if weights[i] == 1:
+                        weights[i] = 20
 
             example_id = random.choices(candidates_ids, k=1, weights=weights)[0]
             break
@@ -576,7 +579,7 @@ async def icm_main(args, train, fewshot_ids, test):
     return test_accuracy, label_assignments, reject_cnt, new_label_sample
 
 
-async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_consistency_ids=10):
+async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_consistency_ids=25):
     """
     Benchmark using golden (ground truth) labels for demonstrations.
 
