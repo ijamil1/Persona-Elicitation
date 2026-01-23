@@ -383,7 +383,9 @@ def load_data(args):
 
     # Shuffle groups and accumulate until we reach ~75% of total items
     group_ids = list(consistency_groups.keys())
-    random.shuffle(group_ids)
+    # Use a seeded RNG to ensure deterministic train/test splits across calls
+    rng = random.Random(args.seed)
+    rng.shuffle(group_ids)
 
     total_items = len(country_data)
     target_train_items = int(total_items * 0.75)
@@ -659,23 +661,23 @@ def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country,
     Plot comparison of test accuracies across methods.
     """
     accuracies = [
+        pretrained_acc * 100,
+        chat_acc * 100,
         icm_acc * 100,
         golden_acc * 100,
-        chat_acc * 100,
-        pretrained_acc * 100,
     ]
     labels = [
+        "Zero-shot (Pretrained)",
+        "Zero-shot (Chat)",
         "ICM (Unsupervised)",
         "Golden Supervision",
-        "Zero-shot (Chat)",
-        "Zero-shot (Pretrained)",
     ]
 
     bar_colors = [
+        "#9658ca",  # darker purple for zero-shot pretrained
+        "#B366CC",  # purple for zero-shot chat
         "#58b6c0",  # teal for ICM
         "#FFD700",  # gold for golden supervision
-        "#B366CC",  # purple for zero-shot chat
-        "#9658ca",  # darker purple for zero-shot pretrained
     ]
 
     x = np.arange(len(labels))
@@ -691,7 +693,7 @@ def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country,
     )
 
     # Add hatching to zero-shot chat bar
-    bars[2].set_hatch('...')
+    bars[1].set_hatch('...')
 
     ax.set_ylabel("Accuracy (%)", fontsize=12)
     ax.set_ylim(0, 100)
