@@ -332,7 +332,6 @@ def get_energy(metric, alpha):
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--alpha", type=float, default=10)
-    parser.add_argument("--seed", type=int, default=27565976)
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-70B")
     parser.add_argument("--num_seed", type=int, default=8)
     parser.add_argument("--K", type=int, default=1500)
@@ -341,7 +340,6 @@ def get_args():
     parser.add_argument("--initial_T", type=float, default=10)
     parser.add_argument("--final_T", type=float, default=0.01)
     parser.add_argument("--scheduler", type=str, default="log")
-    parser.add_argument("--country", type=str, default="United States")
 
     # vLLM configuration
     parser.add_argument("--tensor_parallel_size", type=int, default=1,
@@ -359,7 +357,7 @@ def get_args():
     return args
 
 
-def load_data(args):
+def load_data(args, seed):
     with open(get_root_directory() / "data/transformed_global_opinions.json") as f:
         data = json.load(f)
 
@@ -384,7 +382,7 @@ def load_data(args):
     # Shuffle groups and accumulate until we reach ~75% of total items
     group_ids = list(consistency_groups.keys())
     # Use a seeded RNG to ensure deterministic train/test splits across calls
-    rng = random.Random(args.seed)
+    rng = random.Random(seed)
     rng.shuffle(group_ids)
 
     total_items = len(country_data)
@@ -573,7 +571,7 @@ async def icm_main(args, train, fewshot_ids, test):
     return test_accuracy, label_assignments, demonstrations
 
 
-async def golden_supervision_main(args, train, fewshot_ids, test, num_consistency_ids=10):
+async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_consistency_ids=10):
     """
     Benchmark using golden (ground truth) labels for demonstrations.
 
@@ -591,7 +589,7 @@ async def golden_supervision_main(args, train, fewshot_ids, test, num_consistenc
 
     # Get unique consistency_ids and sample a subset
     consistency_ids = list({item['consistency_id'] for item in all_demonstrations.values()})
-    rng = random.Random(args.seed)
+    rng = random.Random(seed)
     sampled_cids = rng.sample(consistency_ids, min(num_consistency_ids, len(consistency_ids)))
     sampled_cids_set = set(sampled_cids)
 
@@ -671,10 +669,11 @@ async def zero_shot_pretrained_main(args, test):
     return test_accuracy, label_assignments
 
 
-def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country, save_path="figure_1.png"):
+def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country):
     """
     Plot comparison of test accuracies across methods.
     """
+    save_path = f"figure_1_persona_{country}.png"
     accuracies = [
         pretrained_acc * 100,
         chat_acc * 100,
@@ -732,15 +731,18 @@ def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country,
     print(f"Plot saved to {save_path}")
 
 
-async def async_main(args):
+async def async_main(args, seed, country):
     """Main async entry point."""
     global model_api
 
-    setup_environment(logger_level="error", openai_tag='TOGETHER_API_KEY')
-    random.seed(args.seed)
+    # Set country on args so downstream functions can access it
+    args.country = country
 
+    setup_environment(logger_level="error", openai_tag='TOGETHER_API_KEY')
+    random_seed = seed
     # Load data
-    train, fewshot_ids, test = load_data(args)
+    train, fewshot_ids, test = load_data(args, random_seed)
+    test_size = len(test)
 
     print(f'Model: {args.model}, Country: {args.country}, Train size: {len(train)}, Test size: {len(test)}')
 
@@ -755,26 +757,26 @@ async def async_main(args):
     print("Running Golden Supervision Benchmark")
     print("="*50)
     # Reload train data to get fresh labels
-    train, fewshot_ids, test = load_data(args)
-    golden_acc, golden_labels = await golden_supervision_main(args, train, fewshot_ids, test)
+    train, fewshot_ids, test = load_data(args, random_seed)
+    golden_acc, golden_labels = await golden_supervision_main(args, train, random_seed, fewshot_ids, test)
 
     # Run zero-shot chat benchmark
     print("\n" + "="*50)
     print("Running Zero-shot Chat Benchmark")
     print("="*50)
-    _, _, test = load_data(args)  # Reload test
+    _, _, test = load_data(args, random_seed)  # Reload test
     chat_acc, chat_labels = await zero_shot_chat_main(args, test)
 
     # Run zero-shot pretrained benchmark
     print("\n" + "="*50)
     print("Running Zero-shot Pretrained Benchmark")
     print("="*50)
-    _, _, test = load_data(args)  # Reload test
+    _, _, test = load_data(args, random_seed)  # Reload test
     pretrained_acc, pretrained_labels = await zero_shot_pretrained_main(args, test)
 
     # Print summary
     print("\n" + "="*50)
-    print("RESULTS SUMMARY")
+    print(f"RESULTS SUMMARY -- {args.country}")
     print("="*50)
     print(f"ICM (Unsupervised):      {icm_acc*100:.2f}%")
     print(f"Golden Supervision:      {golden_acc*100:.2f}%")
@@ -789,15 +791,14 @@ async def async_main(args):
         "golden": (golden_acc, golden_labels),
         "chat": (chat_acc, chat_labels),
         "pretrained": (pretrained_acc, pretrained_labels),
+        "test_size": test_size,
     }
 
 
 if __name__ == "__main__":
     args = get_args()
 
-    valid_ctrys = ["United States", "Turkey", "Russia", "Pakistan", "Nigeria", "Mexico", "Lebanon", "Jordan", "Japan", "Indonesia", "India", "Germany", "France", "Brazil"]
-
-    assert args.country in valid_ctrys
+    countries = ["France", "Germany", "Japan", "Russia", "United States"]
 
     # Initialize ModelAPI with vLLM configuration
     model_api = ModelAPI(
@@ -812,8 +813,48 @@ if __name__ == "__main__":
         vllm_enable_prefix_caching=True,
     )
 
+    # Generate random seed without a fixed seed
+    random_seed = random.randint(0, 2**31 - 1)
+    print(f"Using random seed: {random_seed}")
+
     try:
-        results = asyncio.run(async_main(args))
+        # Collect results for each country
+        all_results = {}
+        for country in countries:
+            print(f"\n{'#'*60}")
+            print(f"# Processing country: {country}")
+            print(f"{'#'*60}")
+            all_results[country] = asyncio.run(async_main(args, random_seed, country))
+
+        # Aggregate results weighted by test set size
+        total_test_size = sum(r["test_size"] for r in all_results.values())
+
+        aggregated = {}
+        for benchmark in ["icm", "golden", "chat", "pretrained"]:
+            weighted_acc = sum(
+                r[benchmark][0] * r["test_size"] for r in all_results.values()
+            ) / total_test_size
+            aggregated[benchmark] = weighted_acc
+
+        # Print aggregated summary
+        print("\n" + "="*60)
+        print("AGGREGATED RESULTS (weighted by test set size)")
+        print("="*60)
+        print(f"Total test examples: {total_test_size}")
+        print(f"ICM (Unsupervised):      {aggregated['icm']*100:.2f}%")
+        print(f"Golden Supervision:      {aggregated['golden']*100:.2f}%")
+        print(f"Zero-shot (Chat):        {aggregated['chat']*100:.2f}%")
+        print(f"Zero-shot (Pretrained):  {aggregated['pretrained']*100:.2f}%")
+
+        # Plot aggregated results
+        plot_test_accuracies(
+            aggregated["icm"],
+            aggregated["golden"],
+            aggregated["chat"],
+            aggregated["pretrained"],
+            "aggregated"
+        )
+
     finally:
         # Gracefully shutdown vLLM engine
         model_api.shutdown()
