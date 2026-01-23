@@ -14,7 +14,6 @@ import attrs
 import openai
 from openai import AsyncOpenAI
 import requests
-import tiktoken
 from tenacity import retry, stop_after_attempt, wait_fixed
 from termcolor import cprint
 
@@ -75,7 +74,7 @@ class Resource:
 @attrs.define
 class OpenAIModel(ModelAPIProtocol):
     frac_rate_limit: float
-    organization: str
+    organization: str = ""
     print_prompt_and_response: bool = False
     model_ids: set[str] = attrs.field(init=False, default=attrs.Factory(set))
 
