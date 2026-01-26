@@ -287,11 +287,16 @@ async def predict_assignment(model, example, demonstrations):
     return int(new_label)
 
 
-async def predict_assignment_zero_shot(model, example):
+async def predict_assignment_zero_shot(model, example, is_chat_model=False):
     """
     Predict label for a single example using zero-shot prompting.
+
+    Args:
+        model: The model to use for prediction
+        example: The example to evaluate
+        is_chat_model: If True, use instruction-style prompt for chat models
     """
-    prompt = get_judge_prompt_zeroshot(example, pipeline=False)
+    prompt = get_judge_prompt_zeroshot(example, pipeline=False, is_chat_model=is_chat_model)
 
     responses = await model_api(
         model,
@@ -579,7 +584,7 @@ async def icm_main(args, train, fewshot_ids, test):
     return test_accuracy, label_assignments, reject_cnt, new_label_sample
 
 
-async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_consistency_ids=25):
+async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_consistency_ids=20):
     """
     Benchmark using golden (ground truth) labels for demonstrations.
 
@@ -643,7 +648,7 @@ async def zero_shot_chat_main(args, test):
     label_assignments = {}
 
     for idx, item in enumerate(tqdm(test, desc="Zero-shot chat evaluation")):
-        new_label = await predict_assignment_zero_shot(instruct_model, item)
+        new_label = await predict_assignment_zero_shot(instruct_model, item, is_chat_model=True)
         label_assignments[idx] = new_label
         item['new_label'] = new_label
         if item['label'] == new_label:
@@ -665,7 +670,7 @@ async def zero_shot_pretrained_main(args, test):
     label_assignments = {}
 
     for idx, item in enumerate(tqdm(test, desc="Zero-shot pretrained evaluation")):
-        new_label = await predict_assignment_zero_shot(args.model, item)
+        new_label = await predict_assignment_zero_shot(args.model, item, is_chat_model=False)
         label_assignments[idx] = new_label
         item['new_label'] = new_label
         if item['label'] == new_label:

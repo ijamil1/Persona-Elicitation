@@ -29,22 +29,27 @@ def get_decision_prompt(example):
 
 
 def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
+    """
+    Create a few-shot prompt optimized for base/pretrained models.
+
+    Uses minimal pattern completion format rather than instruction-following.
+    """
     if demonstrations is None:
         demonstrations = list(example["demonstration"].values())
-    
+
     country = example["country"]
 
-    prompt = f"You are an expert on the social, economic, and political dynamics of {country}. Below, you are given a sequence of question-claim pairs that you have deemed are either true or false and a final question-claim pair that is yet to be labeled. If you deemed the question-claim pair \
-to be true, you are stating that the claim represents the most common answer/opinion to the question by citizens of {country}. If you deemed the question-claim pair to be false, you are stating that the claim is not the most common answer/opinion to the question by citizens of {country}. \
-Use this context and your expertise to label the final question-claim pair at the bottom to be either \'True\' or \'False\'. Think about what the most common response by a citizen would be and if the claim matches with that or not. Here are the question-claim pairs that you labeled as true/false ... \n"
-    
-    for i in demonstrations:
-        prompt += i['prompt']
-        prompt += "True" if i["label"] else "False"
-        prompt += "\n\n"
+    # Simple header, then pure pattern
+    prompt = f"{country} public opinion survey:\n\n"
 
-    prompt += "and here is the question-claim pair that you need to label: \n"
-    prompt += example['prompt']
+    for demo in demonstrations:
+        prompt += f"Q: {demo['question']}\n"
+        prompt += f"Claim: {demo['choice']}\n"
+        prompt += f"Is most common view: {'True' if demo['label'] else 'False'}\n\n"
+
+    prompt += f"Q: {example['question']}\n"
+    prompt += f"Claim: {example['choice']}\n"
+    prompt += "Is most common view: "
 
     if pipeline:
         return Prompt(prompt)
@@ -52,19 +57,32 @@ Use this context and your expertise to label the final question-claim pair at th
         return prompt
 
 
-def get_judge_prompt_zeroshot(example, pipeline=True):
+def get_judge_prompt_zeroshot(example, pipeline=True, is_chat_model=False):
     """
     Create a zero-shot prompt for evaluating a claim without demonstrations.
 
-    Used for benchmarking zero-shot performance of chat and pretrained models.
+    Args:
+        example: The example to evaluate
+        pipeline: Whether to return a Prompt object or raw string
+        is_chat_model: If True, use instruction-style prompt for chat/instruct models.
+                       If False, use simple pattern completion for base models.
     """
     country = example["country"]
-    prompt = f"You are an expert on the social, economic, and political dynamics of {country}. Below, you are given a question-claim \
-pair that needs to be labeled as true or false. To label the pair as true, you must believe that the claim represents the most common answer/opinion to the question by citizens of {country}. \
-Labeling the pair as false means you believe that the claim is NOT the most common answer/opinion to the question by citizens of {country}. Leverage your expertise of {country} to label the \
-question-claim pair as \'True\' or \'False.\'. Think about what the most common response by a citizen would be and if the claim matches with that or not. Here is the pair: \n"
 
-    prompt = example['prompt']
+    if is_chat_model:
+        # Instruction-style prompt for chat/instruct models
+        prompt = f"You are an expert on the social, economic, and political dynamics of {country}. "
+        prompt += f"Determine if the following claim represents the most common opinion among citizens of {country}. "
+        prompt += "Answer with only 'True' or 'False'.\n\n"
+        prompt += f"Question: {example['question']}\n"
+        prompt += f"Claim: {example['choice']}\n"
+        prompt += "Answer:"
+    else:
+        # Simple pattern completion for base/pretrained models (consistent with few-shot format)
+        prompt = f"{country} public opinion survey:\n\n"
+        prompt += f"Q: {example['question']}\n"
+        prompt += f"Claim: {example['choice']}\n"
+        prompt += "Is most common view:"
 
     if pipeline:
         return Prompt(prompt)
