@@ -488,21 +488,19 @@ async def icm_main(args, train, fewshot_ids, test):
         cur_pool = {k: v for k, v in demonstrations.items() if v["label"] is not None}
 
         # Weighted sampling - prioritize items in consistency groups that have some labeled items
-        while True:
-            candidates_ids = whole_ids
-            weights = [1 for _ in range(len(candidates_ids))]
-            for i in candidates_ids:
-                if i in cur_pool:
-                    same_consistency_group_ids = [j for j in candidates_ids if demonstrations[j]["consistency_id"] == demonstrations[i]["consistency_id"]]
-                    for j in same_consistency_group_ids:
-                        if j not in cur_pool:
-                            weights[j] = 100
-                elif i not in cur_pool:
-                    if weights[i] == 1:
-                        weights[i] = 20
+        candidates_ids = whole_ids
+        weights = [1 for _ in range(len(candidates_ids))]
+        for i in candidates_ids:
+            if i in cur_pool:
+                same_consistency_group_ids = [j for j in candidates_ids if demonstrations[j]["consistency_id"] == demonstrations[i]["consistency_id"]]
+                for j in same_consistency_group_ids:
+                    if j not in cur_pool:
+                        weights[j] = 100
+            elif i not in cur_pool:
+                if weights[i] == 1:
+                    weights[i] = 20
 
             example_id = random.choices(candidates_ids, k=1, weights=weights)[0]
-            break
 
         new_label = await predict_assignment(
             args.model,
@@ -581,15 +579,21 @@ async def icm_main(args, train, fewshot_ids, test):
     test_accuracy = correct_cnt / len(test)
     print(f"ICM Test Accuracy: {test_accuracy:.4f}")
 
-    return test_accuracy, label_assignments, reject_cnt, new_label_sample
+    # Purge demonstrations where label is None before returning
+    demonstrations = {k: v for k, v in demonstrations.items() if v['label'] is not None}
+
+    return test_accuracy, label_assignments, reject_cnt, new_label_sample, demonstrations
 
 
-async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_consistency_ids=20):
+async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_examples=50):
     """
     Benchmark using golden (ground truth) labels for demonstrations.
 
-    Samples a subset of consistency_ids to avoid context overload which can
+    Samples a subset of examples to avoid context overload which can
     degrade in-context learning performance.
+
+    Args:
+        num_examples: Number of examples to sample for demonstrations
     """
     print("\nRunning golden supervision benchmark...")
 
@@ -600,19 +604,17 @@ async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_cons
         item["uid"] = id
         all_demonstrations[id] = item
 
-    # Get unique consistency_ids and sample a subset
-    consistency_ids = list({item['consistency_id'] for item in all_demonstrations.values()})
+    # Sample raw examples
+    all_uids = list(all_demonstrations.keys())
     rng = random.Random(seed)
-    sampled_cids = rng.sample(consistency_ids, min(num_consistency_ids, len(consistency_ids)))
-    sampled_cids_set = set(sampled_cids)
+    sampled_uids = rng.sample(all_uids, min(num_examples, len(all_uids)))
 
-    # Filter demonstrations to only include items from sampled consistency_ids
+    # Filter demonstrations to only include sampled examples
     demonstrations = {
-        uid: item for uid, item in all_demonstrations.items()
-        if item['consistency_id'] in sampled_cids_set
+        uid: all_demonstrations[uid] for uid in sampled_uids
     }
 
-    max_uid = max(demonstrations.keys())
+    max_uid = max(all_demonstrations.keys())
     correct_cnt = 0
     label_assignments = {}
 
@@ -680,6 +682,184 @@ async def zero_shot_pretrained_main(args, test):
     print(f"Zero-shot Pretrained Test Accuracy: {test_accuracy:.4f}")
 
     return test_accuracy, label_assignments
+
+
+async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_demonstrations, seed):
+    """
+    Compare test accuracy as a function of number of in-context examples
+    for gold labels, ICM labels, and random labels (accuracy-matched).
+
+    The number of ICM-labeled examples dictates the threshold for comparison.
+
+    Args:
+        args: Command line arguments
+        train: Training data with gold labels
+        fewshot_ids: Indices into train for few-shot examples
+        test: Test data
+        icm_demonstrations: Dict of demonstrations with ICM-assigned labels (None labels already purged)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Dict with num_examples, gold_acc, icm_acc, random_acc, icm_train_acc lists
+    """
+    print("\n" + "="*50)
+    print("Comparing Labels by Number of Examples")
+    print("="*50)
+
+    # Base all_uids on ICM demonstrations (which dictates the threshold)
+    all_uids = list(icm_demonstrations.keys())
+    print(f"ICM provided labels for {len(all_uids)} examples")
+
+    # Build gold demonstrations only for UIDs that exist in icm_demonstrations
+    gold_demonstrations = {}
+    for id, i in enumerate(fewshot_ids):
+        if id in icm_demonstrations:
+            item = train[i].copy()
+            item["uid"] = id
+            gold_demonstrations[id] = item
+
+    # Number of examples to test
+    num_examples_list = [10, 20, 50, 75, 100, 150, 200, 300, 400, 500]
+    # Filter to only include values <= available ICM examples
+    num_examples_list = [n for n in num_examples_list if n <= len(all_uids)]
+
+    results = {
+        'num_examples': [],
+        'gold_acc': [],
+        'icm_acc': [],
+        'random_acc': [],
+        'icm_train_acc': [],
+    }
+
+    rng = random.Random(seed)
+
+    for num_examples in tqdm(num_examples_list, desc="Comparing labels by num examples"):
+        # Sample raw examples
+        sampled_uids = rng.sample(all_uids, num_examples)
+
+        print(f"\nNum examples: {num_examples}")
+
+        # 1. Gold labels test accuracy
+        gold_demos_subset = {uid: gold_demonstrations[uid].copy() for uid in sampled_uids}
+        max_uid = max(gold_demos_subset.keys())
+
+        gold_correct = 0
+        for idx, item in enumerate(test):
+            item_copy = item.copy()
+            item_copy['uid'] = max_uid + 1 + idx
+            new_label = await predict_assignment(args.model, item_copy, gold_demos_subset)
+            if item['label'] == new_label:
+                gold_correct += 1
+        gold_acc = gold_correct / len(test)
+        print(f"  Gold labels test accuracy: {gold_acc:.4f}")
+
+        # 2. ICM labels test accuracy (same examples)
+        icm_demos_subset = {}
+        for uid in sampled_uids:
+            if uid in icm_demonstrations:
+                icm_demos_subset[uid] = icm_demonstrations[uid].copy()
+
+        icm_correct = 0
+        for idx, item in enumerate(test):
+            item_copy = item.copy()
+            item_copy['uid'] = max_uid + 1 + idx
+            new_label = await predict_assignment(args.model, item_copy, icm_demos_subset)
+            if item['label'] == new_label:
+                icm_correct += 1
+        icm_acc = icm_correct / len(test)
+        print(f"  ICM labels test accuracy: {icm_acc:.4f}")
+
+        # 3. Compute ICM training accuracy (how well ICM labels match gold labels)
+        icm_train_matches = 0
+        for uid in sampled_uids:
+            if uid in icm_demonstrations:
+                gold_label = gold_demonstrations[uid]['label']
+                icm_label = icm_demonstrations[uid]['label']
+                if icm_label is not None and gold_label == icm_label:
+                    icm_train_matches += 1
+        icm_train_acc = icm_train_matches / len(sampled_uids)
+        print(f"  ICM training accuracy: {icm_train_acc:.4f}")
+
+        # 4. Generate random labels with same accuracy as ICM
+        # Start with gold labels, then flip some to match ICM's accuracy
+        random_demos_subset = {uid: gold_demonstrations[uid].copy() for uid in sampled_uids}
+
+        # Calculate how many labels to flip to achieve same accuracy as ICM
+        num_correct_needed = int(len(sampled_uids) * icm_train_acc)
+        num_to_flip = len(sampled_uids) - num_correct_needed
+
+        # Randomly select which labels to flip
+        if num_to_flip > 0:
+            uids_to_flip = rng.sample(sampled_uids, min(num_to_flip, len(sampled_uids)))
+            for uid in uids_to_flip:
+                random_demos_subset[uid]['label'] = 1 - random_demos_subset[uid]['label']
+
+        # Verify random training accuracy
+        random_train_matches = sum(
+            1 for uid in sampled_uids
+            if random_demos_subset[uid]['label'] == gold_demonstrations[uid]['label']
+        )
+        random_train_acc = random_train_matches / len(sampled_uids)
+        print(f"  Random training accuracy (target: {icm_train_acc:.4f}): {random_train_acc:.4f}")
+
+        random_correct = 0
+        for idx, item in enumerate(test):
+            item_copy = item.copy()
+            item_copy['uid'] = max_uid + 1 + idx
+            new_label = await predict_assignment(args.model, item_copy, random_demos_subset)
+            if item['label'] == new_label:
+                random_correct += 1
+        random_acc = random_correct / len(test)
+        print(f"  Random labels test accuracy: {random_acc:.4f}")
+
+        # Store results
+        results['num_examples'].append(num_examples)
+        results['gold_acc'].append(gold_acc)
+        results['icm_acc'].append(icm_acc)
+        results['random_acc'].append(random_acc)
+        results['icm_train_acc'].append(icm_train_acc)
+
+    return results
+
+
+def plot_accuracy_vs_num_examples(results, country):
+    """
+    Plot test accuracy as a function of number of in-context examples.
+
+    Args:
+        results: Dict with num_examples, gold_acc, icm_acc, random_acc lists
+        country: Country name for title
+    """
+    save_path = f"figure_2_accuracy_vs_examples_{country}.png"
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    num_examples = results['num_examples']
+
+    ax.plot(num_examples, [acc * 100 for acc in results['gold_acc']],
+            'o-', color='#FFD700', linewidth=2, markersize=8, label='Gold Labels')
+    ax.plot(num_examples, [acc * 100 for acc in results['icm_acc']],
+            's-', color='#58b6c0', linewidth=2, markersize=8, label='ICM Labels')
+    ax.plot(num_examples, [acc * 100 for acc in results['random_acc']],
+            '^-', color='#9658ca', linewidth=2, markersize=8, label='Random Labels (accuracy-matched)')
+
+    ax.set_xlabel("Number of In-Context Examples", fontsize=12)
+    ax.set_ylabel("Test Accuracy (%)", fontsize=12)
+    ax.set_title(f"Test Accuracy vs Number of Examples - {country}", fontsize=14)
+    ax.legend(loc='best', fontsize=10)
+    ax.grid(True, alpha=0.3)
+
+    # Set y-axis limits with some padding
+    all_accs = results['gold_acc'] + results['icm_acc'] + results['random_acc']
+    min_acc = min(all_accs) * 100
+    max_acc = max(all_accs) * 100
+    padding = (max_acc - min_acc) * 0.1
+    ax.set_ylim(max(0, min_acc - padding), min(100, max_acc + padding))
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Plot saved to {save_path}")
 
 
 def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country):
@@ -763,7 +943,7 @@ async def async_main(args, seed, country):
     print("\n" + "="*50)
     print("Running ICM Algorithm")
     print("="*50)
-    icm_acc, icm_labels, reject_cnt, new_label_sample = await icm_main(args, train, fewshot_ids, test)
+    icm_acc, icm_labels, reject_cnt, new_label_sample, icm_demos = await icm_main(args, train, fewshot_ids, test)
 
     # Run golden supervision benchmark
     print("\n" + "="*50)
@@ -787,6 +967,13 @@ async def async_main(args, seed, country):
     _, _, test = load_data(args, random_seed)  # Reload test
     pretrained_acc, pretrained_labels = await zero_shot_pretrained_main(args, test)
 
+    # Compare labels by number of examples (gold vs ICM vs random)
+    train, fewshot_ids, test = load_data(args, random_seed)  # Reload data
+    comparison_results = await compare_labels_by_num_examples(
+        args, train, fewshot_ids, test, icm_demos, random_seed
+    )
+    plot_accuracy_vs_num_examples(comparison_results, args.country)
+
     # Print summary
     print("\n" + "="*50)
     print(f"RESULTS SUMMARY -- {args.country}")
@@ -807,6 +994,7 @@ async def async_main(args, seed, country):
         "chat": (chat_acc, chat_labels),
         "pretrained": (pretrained_acc, pretrained_labels),
         "test_size": test_size,
+        "comparison": comparison_results,
     }
 
 
@@ -871,6 +1059,46 @@ if __name__ == "__main__":
             aggregated["pretrained"],
             "aggregated"
         )
+
+        # Aggregate comparison results across countries (weighted by test set size)
+        # Group by num_examples and compute weighted averages
+        comparison_by_num_examples = {}
+        for country, results in all_results.items():
+            test_size = results["test_size"]
+            comparison = results["comparison"]
+            for i, num_ex in enumerate(comparison['num_examples']):
+                if num_ex not in comparison_by_num_examples:
+                    comparison_by_num_examples[num_ex] = {
+                        'gold_acc_weighted': 0.0,
+                        'icm_acc_weighted': 0.0,
+                        'random_acc_weighted': 0.0,
+                        'icm_train_acc_weighted': 0.0,
+                        'total_test_size': 0,
+                    }
+                comparison_by_num_examples[num_ex]['gold_acc_weighted'] += comparison['gold_acc'][i] * test_size
+                comparison_by_num_examples[num_ex]['icm_acc_weighted'] += comparison['icm_acc'][i] * test_size
+                comparison_by_num_examples[num_ex]['random_acc_weighted'] += comparison['random_acc'][i] * test_size
+                comparison_by_num_examples[num_ex]['icm_train_acc_weighted'] += comparison['icm_train_acc'][i] * test_size
+                comparison_by_num_examples[num_ex]['total_test_size'] += test_size
+
+        # Build aggregated comparison results with weighted averages
+        aggregated_comparison = {
+            'num_examples': sorted(comparison_by_num_examples.keys()),
+            'gold_acc': [],
+            'icm_acc': [],
+            'random_acc': [],
+            'icm_train_acc': [],
+        }
+        for num_ex in aggregated_comparison['num_examples']:
+            data = comparison_by_num_examples[num_ex]
+            total = data['total_test_size']
+            aggregated_comparison['gold_acc'].append(data['gold_acc_weighted'] / total)
+            aggregated_comparison['icm_acc'].append(data['icm_acc_weighted'] / total)
+            aggregated_comparison['random_acc'].append(data['random_acc_weighted'] / total)
+            aggregated_comparison['icm_train_acc'].append(data['icm_train_acc_weighted'] / total)
+
+        # Plot aggregated comparison
+        plot_accuracy_vs_num_examples(aggregated_comparison, "Aggregated")
 
     finally:
         # Gracefully shutdown vLLM engine
