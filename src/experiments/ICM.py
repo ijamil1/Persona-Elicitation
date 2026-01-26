@@ -447,6 +447,7 @@ async def icm_main(args, train, fewshot_ids, test):
     Returns:
         Tuple of (test_accuracy, label_assignments, demonstrations)
     """
+    train_size = len(fewshot_ids)
     demonstrations, whole_ids = initialize(train, fewshot_ids, args)
 
     cur_metric = {
@@ -466,8 +467,8 @@ async def icm_main(args, train, fewshot_ids, test):
     flip_cnt = 0
     reject_cnt = 0
     new_label_sample = 0 #flip_cnt + reject_cnt = new_label_sample
-
-    for _ in tqdm(range(args.K), desc="ICM searching"):
+    num_iterations = min(args.K, train_size * 4)
+    for _ in tqdm(range(num_iterations), desc="ICM searching"):
         cur_pool = {k: v for k, v in demonstrations.items() if v["label"] is not None}
 
         if iter_count == 0:
@@ -1016,8 +1017,8 @@ async def async_main(args, seed, country):
 if __name__ == "__main__":
     args = get_args()
 
-    countries = ["France", "Germany", "Japan", "Russia", "United States"]
-
+    #countries = ["France", "Germany", "Japan", "Russia", "United States"]
+    countries = ["France", "Japan", "United States"]
     # Initialize ModelAPI with vLLM configuration
     model_api = ModelAPI(
         openai_fraction_rate_limit=0.99,
@@ -1039,8 +1040,6 @@ if __name__ == "__main__":
         # Collect results for each country
         all_results = {}
         for country in countries:
-            if country != 'United States':
-                continue
             print(f"\n{'#'*60}")
             print(f"# Processing country: {country}")
             print(f"{'#'*60}")
