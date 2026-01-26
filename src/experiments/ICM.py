@@ -500,7 +500,7 @@ async def icm_main(args, train, fewshot_ids, test):
                 if weights[i] == 1:
                     weights[i] = 20
 
-            example_id = random.choices(candidates_ids, k=1, weights=weights)[0]
+        example_id = random.choices(candidates_ids, k=1, weights=weights)[0]
 
         new_label = await predict_assignment(
             args.model,
