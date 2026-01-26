@@ -585,7 +585,7 @@ async def icm_main(args, train, fewshot_ids, test):
     return test_accuracy, label_assignments, reject_cnt, new_label_sample, demonstrations
 
 
-async def golden_supervision_main(args, train, seed, fewshot_ids, test, icm_demonstrations, num_examples=50):
+async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrations):
     """
     Benchmark using golden (ground truth) labels for demonstrations.
 
@@ -605,17 +605,8 @@ async def golden_supervision_main(args, train, seed, fewshot_ids, test, icm_demo
             item = train[i]
             item["uid"] = id
             all_demonstrations[id] = item
-
-    # Sample raw examples from the same pool ICM used
-    all_uids = list(all_demonstrations.keys())
-    print(f"Golden supervision sampling from {len(all_uids)} examples (same as ICM)")
-    rng = random.Random(seed)
-    sampled_uids = rng.sample(all_uids, min(num_examples, len(all_uids)))
-
-    # Filter demonstrations to only include sampled examples
-    demonstrations = {
-        uid: all_demonstrations[uid] for uid in sampled_uids
-    }
+    
+    demonstrations = all_demonstrations
 
     max_uid = max(all_demonstrations.keys())
     correct_cnt = 0
@@ -975,7 +966,7 @@ async def async_main(args, seed, country):
     print("="*50)
     # Reload train data to get fresh labels
     train, fewshot_ids, test = load_data(args, random_seed)
-    golden_acc, golden_labels = await golden_supervision_main(args, train, random_seed, fewshot_ids, test, icm_demos)
+    golden_acc, golden_labels = await golden_supervision_main(args, train, fewshot_ids, test, icm_demos)
 
     # Run zero-shot chat benchmark
     print("\n" + "="*50)
