@@ -585,7 +585,7 @@ async def icm_main(args, train, fewshot_ids, test):
     return test_accuracy, label_assignments, reject_cnt, new_label_sample, demonstrations
 
 
-async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_examples=50):
+async def golden_supervision_main(args, train, seed, fewshot_ids, test, icm_demonstrations, num_examples=50):
     """
     Benchmark using golden (ground truth) labels for demonstrations.
 
@@ -593,19 +593,22 @@ async def golden_supervision_main(args, train, seed, fewshot_ids, test, num_exam
     degrade in-context learning performance.
 
     Args:
+        icm_demonstrations: Dict of ICM demonstrations (to ensure we sample from same pool)
         num_examples: Number of examples to sample for demonstrations
     """
     print("\nRunning golden supervision benchmark...")
 
-    # Build all demonstrations first
+    # Build demonstrations only for UIDs that ICM labeled (to ensure fair comparison)
     all_demonstrations = {}
     for id, i in enumerate(fewshot_ids):
-        item = train[i]
-        item["uid"] = id
-        all_demonstrations[id] = item
+        if id in icm_demonstrations:
+            item = train[i]
+            item["uid"] = id
+            all_demonstrations[id] = item
 
-    # Sample raw examples
+    # Sample raw examples from the same pool ICM used
     all_uids = list(all_demonstrations.keys())
+    print(f"Golden supervision sampling from {len(all_uids)} examples (same as ICM)")
     rng = random.Random(seed)
     sampled_uids = rng.sample(all_uids, min(num_examples, len(all_uids)))
 
@@ -718,6 +721,14 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             item["uid"] = id
             gold_demonstrations[id] = item
 
+    # Group UIDs by consistency_id for sampling
+    consistency_groups = {}
+    for uid in all_uids:
+        cid = icm_demonstrations[uid]['consistency_id']
+        if cid not in consistency_groups:
+            consistency_groups[cid] = []
+        consistency_groups[cid].append(uid)
+
     # Number of examples to test
     num_examples_list = [10, 20, 50, 75, 100, 150, 200, 300, 400, 500]
     # Filter to only include values <= available ICM examples
@@ -734,8 +745,22 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
     rng = random.Random(seed)
 
     for num_examples in tqdm(num_examples_list, desc="Comparing labels by num examples"):
-        # Sample raw examples
-        sampled_uids = rng.sample(all_uids, num_examples)
+        # Sample by consistency groups: add entire groups until num_examples is reached
+        group_ids = list(consistency_groups.keys())
+        rng.shuffle(group_ids)
+
+        sampled_uids = []
+        for gid in group_ids:
+            group_uids = consistency_groups[gid]
+            remaining = num_examples - len(sampled_uids)
+            if remaining <= 0:
+                break
+            if len(group_uids) <= remaining:
+                # Add entire group
+                sampled_uids.extend(group_uids)
+            else:
+                # Add partial group to reach exactly num_examples
+                sampled_uids.extend(group_uids[:remaining])
 
         print(f"\nNum examples: {num_examples}")
 
@@ -756,8 +781,7 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
         # 2. ICM labels test accuracy (same examples)
         icm_demos_subset = {}
         for uid in sampled_uids:
-            if uid in icm_demonstrations:
-                icm_demos_subset[uid] = icm_demonstrations[uid].copy()
+            icm_demos_subset[uid] = icm_demonstrations[uid].copy()
 
         icm_correct = 0
         for idx, item in enumerate(test):
@@ -951,7 +975,7 @@ async def async_main(args, seed, country):
     print("="*50)
     # Reload train data to get fresh labels
     train, fewshot_ids, test = load_data(args, random_seed)
-    golden_acc, golden_labels = await golden_supervision_main(args, train, random_seed, fewshot_ids, test)
+    golden_acc, golden_labels = await golden_supervision_main(args, train, random_seed, fewshot_ids, test, icm_demos)
 
     # Run zero-shot chat benchmark
     print("\n" + "="*50)
