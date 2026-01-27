@@ -10,11 +10,10 @@ from pathlib import Path
 
 def get_root_directory():
     """Get the root directory of the project."""
-    return Path(__file__).parent
+    return Path(__file__).parent.parent
 
 
-def load_data(args):
-    """Copy of load_data from ICM.py for testing."""
+def load_data(args, seed):
     with open(get_root_directory() / "data/transformed_global_opinions.json") as f:
         data = json.load(f)
 
@@ -39,11 +38,12 @@ def load_data(args):
     # Shuffle groups and accumulate until we reach ~75% of total items
     group_ids = list(consistency_groups.keys())
     # Use a seeded RNG to ensure deterministic train/test splits across calls
-    rng = random.Random(args.seed)
+    rng = random.Random(seed)
     rng.shuffle(group_ids)
 
     total_items = len(country_data)
-    target_train_items = int(total_items * 0.75)
+    target_train_items = min(int(total_items * 0.75), 300)
+    target_test_items = min(100, int(total_items * .25))    
 
     train_ids = []
     train_group_ids = []
@@ -57,6 +57,8 @@ def load_data(args):
     test_group_ids = [gid for gid in group_ids if gid not in train_group_ids]
     test_ids = []
     for gid in test_group_ids:
+        if len(test_ids) >= target_test_items:
+            break
         test_ids.extend(consistency_groups[gid])
 
     # Build train and test lists
@@ -83,7 +85,7 @@ def test_load_data_determinism():
     # Call load_data multiple times
     results = []
     for i in range(3):
-        train, fewshot_ids, test = load_data(args)
+        train, fewshot_ids, test = load_data(args, args.seed)
         results.append((train, fewshot_ids, test))
 
     # Compare all results
@@ -114,7 +116,7 @@ def test_load_data_determinism():
 
     # Also test with different seeds to make sure seed affects output
     args2 = MockArgs(seed=12345)
-    train_seed2, _, test_seed2 = load_data(args2)
+    train_seed2, _, test_seed2 = load_data(args2, args2.seed)
 
     # The output should be different with a different seed
     train_original = results[0][0]
@@ -134,7 +136,7 @@ def test_load_data_determinism():
 def test_train_test_no_overlap():
     """Test that train and test sets have no overlapping items."""
     args = MockArgs()
-    train, fewshot_ids, test = load_data(args)
+    train, fewshot_ids, test = load_data(args, args.seed)
 
     # Convert dicts to frozensets of tuples for hashable comparison
     def dict_to_hashable(d):

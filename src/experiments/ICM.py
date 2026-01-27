@@ -341,10 +341,10 @@ def get_args():
     parser.add_argument("--num_seed", type=int, default=8)
     parser.add_argument("--K", type=int, default=1500)
     parser.add_argument("--consistency_fix_K", type=int, default=20)
-    parser.add_argument("--decay", type=float, default=0.99)
+    parser.add_argument("--decay", type=float, default=0.995)
     parser.add_argument("--initial_T", type=float, default=10)
     parser.add_argument("--final_T", type=float, default=0.01)
-    parser.add_argument("--scheduler", type=str, default="log")
+    parser.add_argument("--scheduler", type=str, default="exp")
 
     # vLLM configuration
     parser.add_argument("--tensor_parallel_size", type=int, default=1,
@@ -391,7 +391,8 @@ def load_data(args, seed):
     rng.shuffle(group_ids)
 
     total_items = len(country_data)
-    target_train_items = int(total_items * 0.75)
+    target_train_items = min(int(total_items * 0.75), 300)
+    target_test_items = min(100, int(total_items * .25))    
 
     train_ids = []
     train_group_ids = []
@@ -405,6 +406,8 @@ def load_data(args, seed):
     test_group_ids = [gid for gid in group_ids if gid not in train_group_ids]
     test_ids = []
     for gid in test_group_ids:
+        if len(test_ids) >= target_test_items:
+            break
         test_ids.extend(consistency_groups[gid])
 
     # Build train and test lists
@@ -497,9 +500,6 @@ async def icm_main(args, train, fewshot_ids, test):
                 for j in same_consistency_group_ids:
                     if j not in cur_pool:
                         weights[j] = 100
-            elif i not in cur_pool:
-                if weights[i] == 1:
-                    weights[i] = 20
 
         example_id = random.choices(candidates_ids, k=1, weights=weights)[0]
 
