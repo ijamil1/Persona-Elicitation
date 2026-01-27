@@ -320,7 +320,7 @@ async def predict_assignment_zero_shot(model, example, is_chat_model=False):
     return int(new_label)
 
 
-def get_temperature(iteration, initial_temp, final_temp, decay_rate, schedule="exp"):
+def get_temperature(iteration, initial_temp, final_temp, decay_rate, schedule="log"):
     """Calculate the temperature for simulated annealing."""
     if schedule == "exp":
         return max(final_temp, initial_temp * (decay_rate**iteration))
@@ -344,7 +344,7 @@ def get_args():
     parser.add_argument("--decay", type=float, default=0.995)
     parser.add_argument("--initial_T", type=float, default=10)
     parser.add_argument("--final_T", type=float, default=0.01)
-    parser.add_argument("--scheduler", type=str, default="exp")
+    parser.add_argument("--scheduler", type=str, default="log")
 
     # vLLM configuration
     parser.add_argument("--tensor_parallel_size", type=int, default=1,
