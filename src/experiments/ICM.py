@@ -754,7 +754,6 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
                 # Add partial group to reach exactly num_examples
                 sampled_uids.extend(group_uids[:remaining])
 
-        print(f"\nNum examples: {num_examples}")
 
         # 1. Gold labels test accuracy
         gold_demos_subset = {uid: gold_demonstrations[uid].copy() for uid in sampled_uids}
@@ -788,13 +787,11 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
         # 3. Compute ICM training accuracy (how well ICM labels match gold labels)
         icm_train_matches = 0
         for uid in sampled_uids:
-            if uid in icm_demonstrations:
-                gold_label = gold_demonstrations[uid]['label']
-                icm_label = icm_demonstrations[uid]['label']
-                if icm_label is not None and gold_label == icm_label:
-                    icm_train_matches += 1
+            gold_label = gold_demonstrations[uid]['label']
+            icm_label = icm_demonstrations[uid]['label']
+            if gold_label == icm_label:
+                icm_train_matches += 1
         icm_train_acc = icm_train_matches / len(sampled_uids)
-        print(f"  ICM training accuracy: {icm_train_acc:.4f}")
 
         # 4. Generate random labels with same accuracy as ICM
         # Start with gold labels, then flip some to match ICM's accuracy
@@ -809,14 +806,6 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             uids_to_flip = rng.sample(sampled_uids, min(num_to_flip, len(sampled_uids)))
             for uid in uids_to_flip:
                 random_demos_subset[uid]['label'] = 1 - random_demos_subset[uid]['label']
-
-        # Verify random training accuracy
-        random_train_matches = sum(
-            1 for uid in sampled_uids
-            if random_demos_subset[uid]['label'] == gold_demonstrations[uid]['label']
-        )
-        random_train_acc = random_train_matches / len(sampled_uids)
-        print(f"  Random training accuracy (target: {icm_train_acc:.4f}): {random_train_acc:.4f}")
 
         random_correct = 0
         for idx, item in enumerate(test):
@@ -1019,6 +1008,7 @@ if __name__ == "__main__":
 
     #countries = ["France", "Germany", "Japan", "Russia", "United States"]
     countries = ["France", "Japan", "United States"]
+
     # Initialize ModelAPI with vLLM configuration
     model_api = ModelAPI(
         openai_fraction_rate_limit=0.99,
@@ -1040,6 +1030,8 @@ if __name__ == "__main__":
         # Collect results for each country
         all_results = {}
         for country in countries:
+            if country != "United States":
+                continue
             print(f"\n{'#'*60}")
             print(f"# Processing country: {country}")
             print(f"{'#'*60}")
