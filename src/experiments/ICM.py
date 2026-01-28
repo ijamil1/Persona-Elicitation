@@ -352,7 +352,7 @@ def get_args():
                         help="Fraction of GPU memory to use (0.0-1.0)")
     parser.add_argument("--max_model_len", type=int, default=20000,
                         help="Maximum sequence length")
-    parser.add_argument("--max_num_batched_tokens", type=int, default=65536,
+    parser.add_argument("--max_num_batched_tokens", type=int, default=196608,
                         help="Maximum number of batched tokens per iteration")
     parser.add_argument("--max_num_seqs", type=int, default=485,
                         help="Maximum number of sequences per iteration")
