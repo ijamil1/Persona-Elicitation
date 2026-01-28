@@ -1035,8 +1035,6 @@ if __name__ == "__main__":
         # Collect results for each country
         all_results = {}
         for country in countries:
-            if country != "United States":
-                continue
             print(f"\n{'#'*60}")
             print(f"# Processing country: {country}")
             print(f"{'#'*60}")
