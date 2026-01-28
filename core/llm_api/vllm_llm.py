@@ -50,6 +50,8 @@ class VLLMInProcessClient:
         max_num_batched_tokens: Optional[int] = None,
         max_num_seqs: int = 485,
         enable_prefix_caching: bool = True,
+        enable_chunked_prefill: bool = False,
+        kv_cache_dtype: Optional[str] = None,
         print_prompt_and_response: bool = False,
     ):
         self.model_name = model_name
@@ -59,6 +61,8 @@ class VLLMInProcessClient:
         self.max_num_batched_tokens = max_num_batched_tokens
         self.max_num_seqs = max_num_seqs
         self.enable_prefix_caching = enable_prefix_caching
+        self.enable_chunked_prefill = enable_chunked_prefill
+        self.kv_cache_dtype = kv_cache_dtype
         self.print_prompt_and_response = print_prompt_and_response
 
         self._engine = None
@@ -78,6 +82,7 @@ class VLLMInProcessClient:
             "tensor_parallel_size": self.tensor_parallel_size,
             "gpu_memory_utilization": self.gpu_memory_utilization,
             "enable_prefix_caching": self.enable_prefix_caching,
+            "enable_chunked_prefill": self.enable_chunked_prefill,
             "trust_remote_code": True,
         }
 
@@ -89,6 +94,9 @@ class VLLMInProcessClient:
 
         if self.max_num_seqs is not None:
             engine_args["max_num_seqs"] = self.max_num_seqs
+
+        if self.kv_cache_dtype is not None:
+            engine_args["kv_cache_dtype"] = self.kv_cache_dtype
 
         self._engine = vllm.LLM(**engine_args)
         self._initialized = True

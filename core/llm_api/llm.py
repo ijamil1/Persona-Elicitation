@@ -42,6 +42,8 @@ class ModelAPI:
     vllm_max_num_batched_tokens: Optional[int] = None
     vllm_max_num_seqs: int = 485
     vllm_enable_prefix_caching: bool = True
+    vllm_enable_chunked_prefill: bool = False
+    vllm_kv_cache_dtype: Optional[str] = None
 
     _openai_chat: OpenAIChatModel = attrs.field(init=False)
     _vllm_client: Optional[object] = attrs.field(init=False, default=None)
@@ -72,6 +74,8 @@ class ModelAPI:
                 max_num_batched_tokens=self.vllm_max_num_batched_tokens,
                 max_num_seqs=self.vllm_max_num_seqs,
                 enable_prefix_caching=self.vllm_enable_prefix_caching,
+                enable_chunked_prefill=self.vllm_enable_chunked_prefill,
+                kv_cache_dtype=self.vllm_kv_cache_dtype,
                 print_prompt_and_response=self.print_prompt_and_response,
             )
 

@@ -348,11 +348,13 @@ def get_args():
     # vLLM configuration
     parser.add_argument("--tensor_parallel_size", type=int, default=1,
                         help="Number of GPUs for tensor parallelism")
+    parser.add_argument("--kv_cache_dtype", type=str, default="fp8")
+    parser.add_argument("--enable_chunked_prefill", type=bool, default=False)
     parser.add_argument("--gpu_memory_utilization", type=float, default=0.90,
                         help="Fraction of GPU memory to use (0.0-1.0)")
     parser.add_argument("--max_model_len", type=int, default=20000,
                         help="Maximum sequence length")
-    parser.add_argument("--max_num_batched_tokens", type=int, default=196608,
+    parser.add_argument("--max_num_batched_tokens", type=int, default=131072,
                         help="Maximum number of batched tokens per iteration")
     parser.add_argument("--max_num_seqs", type=int, default=485,
                         help="Maximum number of sequences per iteration")
@@ -1019,6 +1021,8 @@ if __name__ == "__main__":
         vllm_max_num_batched_tokens=args.max_num_batched_tokens,
         vllm_max_num_seqs=args.max_num_seqs,
         vllm_enable_prefix_caching=True,
+        vllm_enable_chunked_prefill=args.enable_chunked_prefill,
+        vllm_kv_cache_dtype=args.kv_cache_dtype
     )
 
     # Generate random seed without a fixed seed
