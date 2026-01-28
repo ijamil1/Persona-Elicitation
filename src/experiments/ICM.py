@@ -176,7 +176,6 @@ def get_pipeline_batched(
         copy_data = deepcopy(train_data)
         copy_data = {k: v for k, v in copy_data.items() if v["label"] is not None}
         keys = list(copy_data.keys())
-        values = list(copy_data.values())
         saved_keys = [
             "prompt",
             "question",
@@ -351,7 +350,7 @@ def get_args():
                         help="Number of GPUs for tensor parallelism")
     parser.add_argument("--gpu_memory_utilization", type=float, default=0.90,
                         help="Fraction of GPU memory to use (0.0-1.0)")
-    parser.add_argument("--max_model_len", type=int, default=55000,
+    parser.add_argument("--max_model_len", type=int, default=20000,
                         help="Maximum sequence length")
     parser.add_argument("--max_num_batched_tokens", type=int, default=65536,
                         help="Maximum number of batched tokens per iteration")
