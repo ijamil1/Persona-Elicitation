@@ -61,7 +61,7 @@ class ModelAPI:
             frac_rate_limit=self.openai_fraction_rate_limit,
             print_prompt_and_response=self.print_prompt_and_response,
         )
-        assert self.vllm_model_name in ["meta-llama/Llama-3.1-8B", "meta-llama/Llama-3.1-70B", "RedHatAI/Meta-Llama-3.1-70B-FP8"]
+        assert self.vllm_model_name in ["meta-llama/Llama-3.1-8B", "RedHatAI/Meta-Llama-3.1-8B-FP8", "meta-llama/Llama-3.1-70B", "RedHatAI/Meta-Llama-3.1-70B-FP8"]
         # Initialize vLLM client if enabled
         if self.use_vllm and self.vllm_model_name:
             from core.llm_api.vllm_llm import VLLMInProcessClient

@@ -639,6 +639,7 @@ async def zero_shot_chat_main(args, test):
         'meta-llama/Llama-3.1-8B': 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
         'meta-llama/Llama-3.1-70B': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
         'meta-llama/Llama-3.1-405B': 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo',
+        'RedHatAI/Meta-Llama-3.1-8B-FP8': 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
         'RedHatAI/Meta-Llama-3.1-70B-FP8': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'
     }
     instruct_model = model_mapping.get(args.model, args.model + '-Instruct-Turbo')
