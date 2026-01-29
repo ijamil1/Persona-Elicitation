@@ -336,7 +336,7 @@ def get_energy(metric, alpha):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--alpha", type=float, default=5)
+    parser.add_argument("--alpha", type=float, default=2.5)
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-70B")
     parser.add_argument("--num_seed", type=int, default=8)
     parser.add_argument("--K", type=int, default=1000)
