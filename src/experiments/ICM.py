@@ -338,7 +338,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--alpha", type=float, default=2.5)
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-70B")
-    parser.add_argument("--num_seed", type=int, default=8)
+    parser.add_argument("--num_seed", type=int, default=12)
     parser.add_argument("--K", type=int, default=1000)
     parser.add_argument("--consistency_fix_K", type=int, default=20)
     parser.add_argument("--decay", type=float, default=0.995)
@@ -403,6 +403,7 @@ def load_data(args, seed):
             break
         train_ids.extend(consistency_groups[gid])
         train_group_ids.append(gid)
+    train_ids = train_ids[:target_train_items]
 
     # Remaining groups go to test
     test_group_ids = [gid for gid in group_ids if gid not in train_group_ids]
@@ -411,6 +412,7 @@ def load_data(args, seed):
         if len(test_ids) >= target_test_items:
             break
         test_ids.extend(consistency_groups[gid])
+    test_ids = test_ids[:target_test_items]
 
     # Build train and test lists
     train = [country_data[i] for i in train_ids]

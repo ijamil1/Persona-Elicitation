@@ -40,16 +40,16 @@ def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
     country = example["country"]
 
     # Simple header, then pure pattern
-    prompt = f"{country} public opinion survey:\n\n"
+    prompt = f"{country} - Public Opinion Survey Results:\n\n"
 
     for demo in demonstrations:
         prompt += f"Q: {demo['question']}\n"
-        prompt += f"Claim: {demo['choice']}\n"
-        prompt += f"Is most common view: {'True' if demo['label'] else 'False'}\n\n"
+        prompt += f"A: {demo['choice']}\n"
+        prompt += f"Reflects majority view: {'True' if demo['label'] else 'False'}\n\n"
 
     prompt += f"Q: {example['question']}\n"
-    prompt += f"Claim: {example['choice']}\n"
-    prompt += "Is most common view: "
+    prompt += f"A: {example['choice']}\n"
+    prompt += "Reflects majority view: "
 
     if pipeline:
         return Prompt(prompt)
@@ -72,17 +72,17 @@ def get_judge_prompt_zeroshot(example, pipeline=True, is_chat_model=False):
     if is_chat_model:
         # Instruction-style prompt for chat/instruct models
         prompt = f"You are an expert on the social, economic, and political dynamics of {country}. "
-        prompt += f"Determine if the following claim represents the most common opinion among citizens of {country}. "
-        prompt += "Answer with only 'True' or 'False'.\n\n"
-        prompt += f"Question: {example['question']}\n"
-        prompt += f"Claim: {example['choice']}\n"
-        prompt += "Answer:"
+        prompt += f"Determine if the answer to a question (both listed below) represents the most common opinion among citizens of {country}. "
+        prompt += "Respond with only 'True' or 'False'.\n\n"
+        prompt += f"Q: {example['question']}\n"
+        prompt += f"A: {example['choice']}\n"
+        prompt += "Reflects majority view: "
     else:
         # Simple pattern completion for base/pretrained models (consistent with few-shot format)
-        prompt = f"{country} public opinion survey:\n\n"
+        prompt = f"{country} - Public Opinion Survey Results:\n\n"
         prompt += f"Q: {example['question']}\n"
-        prompt += f"Claim: {example['choice']}\n"
-        prompt += "Is most common view: "
+        prompt += f"A: {example['choice']}\n"
+        prompt += "Reflects majority view: "
 
     if pipeline:
         return Prompt(prompt)
