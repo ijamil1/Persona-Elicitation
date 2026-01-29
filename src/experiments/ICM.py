@@ -7,6 +7,7 @@ from copy import deepcopy
 from tqdm import tqdm
 import numpy as np
 import argparse
+import os
 import matplotlib.pyplot as plt
 
 from core.llm_api.llm import ModelAPI
@@ -338,7 +339,7 @@ def get_args():
     parser.add_argument("--alpha", type=float, default=5)
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-70B")
     parser.add_argument("--num_seed", type=int, default=8)
-    parser.add_argument("--K", type=int, default=1500)
+    parser.add_argument("--K", type=int, default=1000)
     parser.add_argument("--consistency_fix_K", type=int, default=20)
     parser.add_argument("--decay", type=float, default=0.995)
     parser.add_argument("--initial_T", type=float, default=10)
@@ -392,8 +393,8 @@ def load_data(args, seed):
     rng.shuffle(group_ids)
 
     total_items = len(country_data)
-    target_train_items = min(int(total_items * 0.75), 300)
-    target_test_items = min(100, int(total_items * .25))    
+    target_train_items = min(int(total_items * 0.75), 200)
+    target_test_items = min(75, int(total_items * .25))    
 
     train_ids = []
     train_group_ids = []
@@ -953,6 +954,17 @@ async def async_main(args, seed, country):
     print("="*50)
     icm_acc, icm_labels, reject_cnt, new_label_sample, icm_demos = await icm_main(args, train, fewshot_ids, test)
 
+    # Save ICM demonstrations to icm_results/
+    icm_results_dir = os.path.join(os.path.dirname(__file__), "icm_results")
+    os.makedirs(icm_results_dir, exist_ok=True)
+    icm_results_path = os.path.join(icm_results_dir, f"icm_demos_{country}_{seed}.json")
+    icm_demos_list = []
+    for uid, demo in icm_demos.items():
+        icm_demos_list.append(demo)
+    with open(icm_results_path, "w") as f:
+        json.dump(icm_demos_list, f, indent=2, default=str)
+    print(f"Saved ICM demonstrations to {icm_results_path}")
+
     # Run golden supervision benchmark
     print("\n" + "="*50)
     print("Running Golden Supervision Benchmark")
@@ -1027,9 +1039,8 @@ if __name__ == "__main__":
         vllm_kv_cache_dtype=args.kv_cache_dtype
     )
 
-    # Generate random seed without a fixed seed
-    random_seed = random.randint(0, 2**31 - 1)
-    print(f"Using random seed: {random_seed}")
+    # Use fixed seed
+    seed = 733244742
 
     try:
         # Collect results for each country
@@ -1038,7 +1049,7 @@ if __name__ == "__main__":
             print(f"\n{'#'*60}")
             print(f"# Processing country: {country}")
             print(f"{'#'*60}")
-            all_results[country] = asyncio.run(async_main(args, random_seed, country))
+            all_results[country] = asyncio.run(async_main(args, seed, country))
 
         # Aggregate results weighted by test set size
         total_test_size = sum(r["test_size"] for r in all_results.values())
