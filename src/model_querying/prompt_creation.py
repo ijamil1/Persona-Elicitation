@@ -39,8 +39,8 @@ def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
 
     country = example["country"]
 
-    # Simple header, then pure pattern
-    prompt = f"{country} public opinion survey:\n\n"
+    # Naturalistic survey framing to prime base model completions
+    prompt = f"The following is a survey of public opinion in {country}, showing responses to questions about social, economic, and political topics and whether each response reflects the most common view.\n\n"
 
     for demo in demonstrations:
         prompt += f"Q: {demo['question']}\n"
@@ -78,11 +78,11 @@ def get_judge_prompt_zeroshot(example, pipeline=True, is_chat_model=False):
         prompt += f"Claim: {example['choice']}\n"
         prompt += "Answer:"
     else:
-        # Simple pattern completion for base/pretrained models (consistent with few-shot format)
-        prompt = f"{country} public opinion survey:\n\n"
+        # Naturalistic survey framing for base/pretrained models (consistent with few-shot format)
+        prompt = f"The following is a survey of public opinion in {country}, showing responses to questions about social, economic, and political topics and whether each response reflects the most common view.\n\n"
         prompt += f"Q: {example['question']}\n"
         prompt += f"Claim: {example['choice']}\n"
-        prompt += "Is most common view:"
+        prompt += "Is most common view: "
 
     if pipeline:
         return Prompt(prompt)
