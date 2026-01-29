@@ -472,7 +472,7 @@ async def icm_main(args, train, fewshot_ids, test):
     flip_cnt = 0
     reject_cnt = 0
     new_label_sample = 0 #flip_cnt + reject_cnt = new_label_sample
-    num_iterations = min(args.K, train_size * 4)
+    num_iterations = args.K
     for _ in tqdm(range(num_iterations), desc="ICM searching"):
         cur_pool = {k: v for k, v in demonstrations.items() if v["label"] is not None}
 
