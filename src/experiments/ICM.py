@@ -325,7 +325,7 @@ def get_temperature(iteration, initial_temp, final_temp, decay_rate, schedule="l
     if schedule == "exp":
         return max(final_temp, initial_temp * (decay_rate**iteration))
     elif schedule == "log":
-        return max(final_temp, initial_temp / (1 + 1.5 * np.log(1 + iteration)))
+        return max(final_temp, initial_temp / (1 + 1.41 * np.log(1 + iteration)))
     else:
         assert False
 
