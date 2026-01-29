@@ -1022,7 +1022,7 @@ if __name__ == "__main__":
     args = get_args()
 
     #countries = ["France", "Germany", "Japan", "Russia", "United States"]
-    countries = ["France", "Japan", "United States"]
+    countries = ["United States", "France", "Japan"]
 
     # Initialize ModelAPI with vLLM configuration
     model_api = ModelAPI(
