@@ -7,9 +7,9 @@ logger = logging.getLogger(__name__)
 
 
 def get_yes_no(x):
-    x = x.lower()
-    y = "true" in x
-    n = "false" in x
+    x = x.strip().lower()
+    y = "true" == x or "yes" == x
+    n = "false" == x or "no" == x
     if y == n:
         return None
     return y

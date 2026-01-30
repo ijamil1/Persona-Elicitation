@@ -40,16 +40,16 @@ def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
     country = example["country"]
 
     # Simple header, then pure pattern
-    prompt = f"{country} - Public Opinion Survey Results:\n\n"
+    prompt = f"{country} - Public Opinion Alignment:\n\n"
 
     for demo in demonstrations:
         prompt += f"Q: {demo['question']}\n"
         prompt += f"A: {demo['choice']}\n"
-        prompt += f"Reflects majority view: {'True' if demo['label'] else 'False'}\n\n"
+        prompt += f"Reflects majority view in {country}: {'True' if demo['label'] else 'False'}\n\n"
 
     prompt += f"Q: {example['question']}\n"
     prompt += f"A: {example['choice']}\n"
-    prompt += "Reflects majority view: "
+    prompt += f"Reflects majority view in {country}: "
 
     if pipeline:
         return Prompt(prompt)
@@ -79,10 +79,10 @@ def get_judge_prompt_zeroshot(example, pipeline=True, is_chat_model=False):
         prompt += "Reflects majority view: "
     else:
         # Simple pattern completion for base/pretrained models (consistent with few-shot format)
-        prompt = f"{country} - Public Opinion Survey Results:\n\n"
+        prompt = f"{country} - Public Opinion Alignment:\n\n"
         prompt += f"Q: {example['question']}\n"
         prompt += f"A: {example['choice']}\n"
-        prompt += "Reflects majority view: "
+        prompt += f"Reflects majority view in {country}: "
 
     if pipeline:
         return Prompt(prompt)
