@@ -325,7 +325,7 @@ def get_temperature(iteration, initial_temp, final_temp, decay_rate, schedule="l
     if schedule == "exp":
         return max(final_temp, initial_temp * (decay_rate**iteration))
     elif schedule == "log":
-        return max(final_temp, initial_temp / (1 + 1.41 * np.log(1 + iteration)))
+        return max(final_temp, initial_temp / (1 + 1.6 * np.log(1 + iteration)))
     else:
         assert False
 
@@ -336,7 +336,7 @@ def get_energy(metric, alpha):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--alpha", type=float, default=2.5)
+    parser.add_argument("--alpha", type=float, default=3.5)
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-70B")
     parser.add_argument("--num_seed", type=int, default=12)
     parser.add_argument("--K", type=int, default=1000)
