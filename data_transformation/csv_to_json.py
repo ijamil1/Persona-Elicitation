@@ -1,10 +1,18 @@
+import argparse
 import pandas as pd
 import json
 
 
-def main():
+def main(dataset="all"):
+    if dataset == "binary":
+        csv_path = "data/transformed_global_opinions_binary.csv"
+        output_path = "data/transformed_global_opinions_binary.json"
+    else:
+        csv_path = "data/transformed_global_opinions.csv"
+        output_path = "data/transformed_global_opinions.json"
+
     # Read the transformed CSV
-    df = pd.read_csv("data/transformed_global_opinions.csv")
+    df = pd.read_csv(csv_path)
 
     # Create a mapping of (question, country) pairs to consistency_ids
     unique_pairs = df[["question", "country"]].drop_duplicates()
@@ -25,7 +33,6 @@ def main():
         })
 
     # Write to JSON file
-    output_path = "data/transformed_global_opinions.json"
     with open(output_path, "w") as f:
         json.dump(records, f, indent=4)
 
@@ -33,4 +40,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", default="all", choices=["all", "binary"],
+                        help="'all' for transformed_global_opinions, 'binary' for binary-only questions")
+    args = parser.parse_args()
+    main(dataset=args.dataset)
