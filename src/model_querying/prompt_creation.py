@@ -44,11 +44,11 @@ def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
     for demo in demonstrations:
         prompt += f"Survey question: \"{demo['question']}\"\n"
         prompt += f"Response option: \"{demo['choice']}\"\n"
-        prompt += f"This response represents the majority opinion in {country}: {'True' if demo['label'] else 'False'}\n\n"
+        prompt += f"I think this response represents the majority opinion in {country}: {'True' if demo['label'] else 'False'}\n\n"
 
     prompt += f"Survey question: \"{example['question']}\"\n"
     prompt += f"Response option: \"{example['choice']}\"\n"
-    prompt += f"This response represents the majority opinion in {country}: "
+    prompt += f"I think this response represents the majority opinion in {country}: "
 
     if pipeline:
         return Prompt(prompt)
@@ -81,7 +81,7 @@ def get_judge_prompt_zeroshot(example, pipeline=True, is_chat_model=False):
         prompt = f"Survey Analysis: {country} Public Opinion\n\n"
         prompt += f"Survey question: \"{example['question']}\"\n"
         prompt += f"Response option: \"{example['choice']}\"\n"
-        prompt += f"This response represents the majority opinion in {country}: "
+        prompt += f"I think this response represents the majority opinion in {country}: "
 
     if pipeline:
         return Prompt(prompt)
