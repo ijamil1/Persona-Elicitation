@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+example_prompt.txt
 ruff.toml
 tensorboard/
 # C extensions

@@ -325,7 +325,7 @@ def get_temperature(iteration, initial_temp, final_temp, decay_rate, schedule="l
     if schedule == "exp":
         return max(final_temp, initial_temp * (decay_rate**iteration))
     elif schedule == "log":
-        return max(final_temp, initial_temp / (1 + 1.6 * np.log(1 + iteration)))
+        return max(final_temp, initial_temp / (1 + 2.5 * np.log(1 + iteration)))
     else:
         assert False
 
@@ -353,7 +353,7 @@ def get_args():
     parser.add_argument("--enable_chunked_prefill", type=bool, default=False)
     parser.add_argument("--gpu_memory_utilization", type=float, default=0.90,
                         help="Fraction of GPU memory to use (0.0-1.0)")
-    parser.add_argument("--max_model_len", type=int, default=20000,
+    parser.add_argument("--max_model_len", type=int, default=15000,
                         help="Maximum sequence length")
     parser.add_argument("--max_num_batched_tokens", type=int, default=115072,
                         help="Maximum number of batched tokens per iteration")
