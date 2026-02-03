@@ -476,8 +476,12 @@ async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrat
             item = train[i]
             item["uid"] = id
             all_demonstrations[id] = item
-    
-    demonstrations = all_demonstrations
+
+    # Randomize demonstration order with fixed seed for reproducibility
+    demo_rng = random.Random(42)
+    shuffled_uids = list(all_demonstrations.keys())
+    demo_rng.shuffle(shuffled_uids)
+    demonstrations = {uid: all_demonstrations[uid] for uid in shuffled_uids}
 
     max_uid = max(all_demonstrations.keys())
     correct_cnt = 0
@@ -623,7 +627,10 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
 
         sampled_uids = []
         if num_examples == len(all_uids):
-            sampled_uids = all_uids  
+            # Use same fixed seed as golden_supervision_main for consistent ordering
+            demo_rng = random.Random(42)
+            sampled_uids = list(all_uids)
+            demo_rng.shuffle(sampled_uids)
         else:
             for gid in group_ids:
                 group_uids = consistency_groups[gid]
