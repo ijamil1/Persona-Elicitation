@@ -80,7 +80,6 @@ def main():
 
     result_df = pd.DataFrame(records)
     print(f"Reformatted dataframe: {len(result_df)} rows")
-    init_len = result_df.shape[0]
 
     # Step 7: Add binary label column (1 for max percentage per question/country, 0 otherwise)
     result_df["label"] = result_df.groupby(["question", "country"])["percentage"].transform(
