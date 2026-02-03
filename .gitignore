@@ -11,7 +11,7 @@ tensorboard/
 
 .idea
 scripts/
-
+data_transformation/test_*
 # Distribution / packaging
 .Python
 build/

@@ -960,7 +960,7 @@ async def async_main(args, seed, country):
     print("Running ICM Algorithm")
     print("="*50)
     icm_acc, icm_labels, reject_cnt, new_label_sample, icm_demos = await icm_main(args, train, fewshot_ids, test)
-
+    
     # Save ICM demonstrations to icm_results/
     icm_results_dir = os.path.join(os.path.dirname(__file__), "icm_results")
     os.makedirs(icm_results_dir, exist_ok=True)
@@ -999,7 +999,8 @@ async def async_main(args, seed, country):
     comparison_results = await compare_labels_by_num_examples(
         args, train, fewshot_ids, test, icm_demos, random_seed
     )
-    plot_accuracy_vs_num_examples(comparison_results, args.country)
+    
+    #plot_accuracy_vs_num_examples(comparison_results, args.country)
 
     # Print summary
     print("\n" + "="*50)
@@ -1012,8 +1013,11 @@ async def async_main(args, seed, country):
     print(f"Zero-shot (Chat):        {chat_acc*100:.2f}%")
     print(f"Zero-shot (Pretrained):  {pretrained_acc*100:.2f}%")
 
+    print(comparison_results)
+
+
     # Plot results
-    plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, args.country)
+    #plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, args.country)
 
     return {
         "icm": (icm_acc, icm_labels),
@@ -1079,13 +1083,13 @@ if __name__ == "__main__":
         print(f"Zero-shot (Pretrained):  {aggregated['pretrained']*100:.2f}%")
 
         # Plot aggregated results
-        plot_test_accuracies(
-            aggregated["icm"],
-            aggregated["golden"],
-            aggregated["chat"],
-            aggregated["pretrained"],
-            "aggregated"
-        )
+        #plot_test_accuracies(
+        #    aggregated["icm"],
+        #    aggregated["golden"],
+        #    aggregated["chat"],
+        #    aggregated["pretrained"],
+        #    "aggregated"
+        #)
 
         # Aggregate comparison results across countries (weighted by test set size)
         # Group by num_examples and compute weighted averages
@@ -1124,8 +1128,9 @@ if __name__ == "__main__":
             aggregated_comparison['random_acc'].append(data['random_acc_weighted'] / total)
             aggregated_comparison['icm_train_acc'].append(data['icm_train_acc_weighted'] / total)
 
+        print(aggregated_comparison)
         # Plot aggregated comparison
-        plot_accuracy_vs_num_examples(aggregated_comparison, "Aggregated")
+        #plot_accuracy_vs_num_examples(aggregated_comparison, "Aggregated")
 
     finally:
         # Gracefully shutdown vLLM engine
