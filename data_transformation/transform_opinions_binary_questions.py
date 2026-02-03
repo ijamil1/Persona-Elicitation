@@ -71,19 +71,39 @@ def main():
                 })
 
     result_df = pd.DataFrame(records)
+    group_sizes = result_df.groupby(["question", "country"]).size()
+    multi_option_groups = (group_sizes > 2).sum()
+    print(f"Groups with > 2 options rows: {multi_option_groups}")
+    if multi_option_groups:
+        print(group_sizes)
+    assert multi_option_groups == 0
     print(f"Reformatted dataframe: {len(result_df)} rows")
+
+    init_len = result_df.shape[0]
 
     # Step 7: Add binary label column (1 for max percentage per question/country, 0 otherwise)
     result_df["label"] = result_df.groupby(["question", "country"])["percentage"].transform(
         lambda x: (x == x.max()).astype(int)
     )
 
+    post_label_len = result_df.shape[0]
+    assert init_len == post_label_len
+
     # Resolve ties: keep only the first label=1 per (question, country)
     mask = result_df["label"] == 1
-    duplicates = mask & (mask.groupby([result_df["question"], result_df["country"]]).cumcount() > 0)
-    if duplicates.any():
-        print(f"Warning: {duplicates.sum()} tied rows found. Keeping first label=1 per group only.")
-        result_df.loc[duplicates, "label"] = 0
+    print(f"Rows with label=1 before tie-breaking: {mask.sum()}, expected >= {init_len/2}")
+    assert mask.sum() >= init_len / 2  # >= because ties give both label=1 initially
+
+    # Get indices of duplicate label=1 rows (keep first, mark rest as duplicates)
+    label_one_rows = result_df[mask]
+    dup_indices = label_one_rows.groupby(["question", "country"]).cumcount() > 0
+    duplicate_idx = label_one_rows[dup_indices].index
+    if len(duplicate_idx) > 0:
+        print(f"Warning: {len(duplicate_idx)} tied rows found. Keeping first label=1 per group only.")
+        result_df.loc[duplicate_idx, "label"] = 0
+
+    post_dup_fix_len = result_df.shape[0]
+    assert init_len == post_dup_fix_len
 
     # Assert exactly 1 label=1 per (question, country)
     label_ones = result_df[result_df["label"] == 1].groupby(["question", "country"]).size()
@@ -93,6 +113,19 @@ def main():
     # Step 8: Downsample to 2 rows per (question, country): the label=1 row + 1 random label=0 row
     label_one = result_df[result_df["label"] == 1]
     label_zero = result_df[result_df["label"] == 0]
+
+    assert label_one.shape[0] + label_zero.shape[0] == init_len
+
+    # Check for groups with more than 1 label=0 row (shouldn't exist for binary questions)
+    group_sizes = label_zero.groupby(["question", "country"]).size().reset_index(name="count")
+    print(group_sizes.shape[0], label_zero.shape[0])
+    assert group_sizes.shape[0] == label_zero.shape[0]
+    multi_zero_groups = (group_sizes['count'] > 1).sum()
+    print(f"Groups with >1 label=0 rows: {multi_zero_groups}")
+    if multi_zero_groups:
+        print(group_sizes)
+    assert multi_zero_groups == 0
+
     sampled_zero = label_zero.groupby(["question", "country"]).sample(n=1, random_state=42)
     result_df = pd.concat([label_one, sampled_zero]).sort_index()
     print(f"After downsampling to 2 per group: {len(result_df)} rows")

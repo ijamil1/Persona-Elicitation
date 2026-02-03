@@ -80,6 +80,7 @@ def main():
 
     result_df = pd.DataFrame(records)
     print(f"Reformatted dataframe: {len(result_df)} rows")
+    init_len = result_df.shape[0]
 
     # Step 7: Add binary label column (1 for max percentage per question/country, 0 otherwise)
     result_df["label"] = result_df.groupby(["question", "country"])["percentage"].transform(
@@ -88,10 +89,12 @@ def main():
 
     # Resolve ties: keep only the first label=1 per (question, country)
     mask = result_df["label"] == 1
-    duplicates = mask & (mask.groupby([result_df["question"], result_df["country"]]).cumcount() > 0)
-    if duplicates.any():
-        print(f"Warning: {duplicates.sum()} tied rows found. Keeping first label=1 per group only.")
-        result_df.loc[duplicates, "label"] = 0
+    label_one_rows = result_df[mask]
+    dup_indices = label_one_rows.groupby(["question", "country"]).cumcount() > 0
+    duplicate_idx = label_one_rows[dup_indices].index
+    if len(duplicate_idx) > 0:
+        print(f"Warning: {len(duplicate_idx)} tied rows found. Keeping first label=1 per group only.")
+        result_df.loc[duplicate_idx, "label"] = 0
 
     # Assert exactly 1 label=1 per (question, country)
     label_ones = result_df[result_df["label"] == 1].groupby(["question", "country"]).size()
@@ -101,6 +104,10 @@ def main():
     # Step 8: Downsample to 2 rows per (question, country): the label=1 row + 1 random label=0 row
     label_one = result_df[result_df["label"] == 1]
     label_zero = result_df[result_df["label"] == 0]
+
+    num_groups = result_df.groupby(["question", "country"]).ngroups
+    assert label_one.shape[0] == num_groups, f"Expected {num_groups} label=1 rows, got {label_one.shape[0]}"
+
     sampled_zero = label_zero.groupby(["question", "country"]).sample(n=1, random_state=42)
     result_df = pd.concat([label_one, sampled_zero]).sort_index()
     print(f"After downsampling to 2 per group: {len(result_df)} rows")
