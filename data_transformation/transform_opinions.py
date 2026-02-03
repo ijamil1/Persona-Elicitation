@@ -86,6 +86,18 @@ def main():
         lambda x: (x == x.max()).astype(int)
     )
 
+    # Resolve ties: keep only the first label=1 per (question, country)
+    mask = result_df["label"] == 1
+    duplicates = mask & (mask.groupby([result_df["question"], result_df["country"]]).cumcount() > 0)
+    if duplicates.any():
+        print(f"Warning: {duplicates.sum()} tied rows found. Keeping first label=1 per group only.")
+        result_df.loc[duplicates, "label"] = 0
+
+    # Assert exactly 1 label=1 per (question, country)
+    label_ones = result_df[result_df["label"] == 1].groupby(["question", "country"]).size()
+    assert (label_ones == 1).all(), "Some (question, country) groups don't have exactly 1 label=1"
+    print(f"Verified: each (question, country) has exactly 1 row with label=1")
+
     # Step 8: Write to CSV
     output_path = "data/transformed_global_opinions.csv"
     result_df.to_csv(output_path, index=False)
