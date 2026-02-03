@@ -454,7 +454,6 @@ async def icm_main(args, train, fewshot_ids, test):
     Returns:
         Tuple of (test_accuracy, label_assignments, demonstrations)
     """
-    train_size = len(fewshot_ids)
     demonstrations, whole_ids = initialize(train, fewshot_ids, args)
 
     cur_metric = {
