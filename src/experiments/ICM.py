@@ -813,6 +813,7 @@ async def async_main(args, seed, country):
     print("\n" + "="*50)
     print("Running Golden Supervision Benchmark")
     print("="*50)
+    train, fewshot_ids, test = load_data(args, random_seed)
     golden_acc, golden_labels = await golden_supervision_main(args, train, fewshot_ids, test, icm_demos)
 
     # Run zero-shot chat benchmark
