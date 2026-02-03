@@ -433,7 +433,7 @@ def load_data(args, seed):
 def initialize(train, fewshot_ids, args):
     demonstrations = {}
     whole_ids = []
-
+    args.num_seed = len(train)
     random_init_labels = [1] * (args.num_seed // 2) + [0] * (args.num_seed // 2)
     random.shuffle(random_init_labels)
 
@@ -443,7 +443,7 @@ def initialize(train, fewshot_ids, args):
         item["uid"] = id
         whole_ids.append(item["uid"])
         if id >= args.num_seed:
-            item["label"] = None
+            item["label"] = 0
             item["type"] = "predict"
         else:
             item["type"] = "seed"
@@ -451,149 +451,6 @@ def initialize(train, fewshot_ids, args):
         demonstrations[id] = item
 
     return demonstrations, whole_ids
-
-
-async def icm_main(args, train, fewshot_ids, test):
-    """
-    Main ICM algorithm with test evaluation.
-
-    Returns:
-        Tuple of (test_accuracy, label_assignments, demonstrations)
-    """
-    demonstrations, whole_ids = initialize(train, fewshot_ids, args)
-
-    cur_metric = {
-        "train_prob": -1e6,
-        "inconsistent_num": 100000,
-        "train_accuracy": 1.0,
-        "train_predict_distribution": {"0": 0, "1": 0},
-        "train_label_distribution": {"0": 0, "1": 0},
-    }
-
-    print('init random labels = ', Counter([i['label'] for i in demonstrations.values() if i['type'] == 'seed']),
-          'init label acc = ', np.mean([i['label'] == i['vanilla_label'] for i in demonstrations.values() if i['type'] == 'seed']))
-
-    name = f"{args.country}-K{args.K}-initialsize{args.num_seed}-weighted{args.alpha}-decay{args.decay}-initialT{args.initial_T}-finalT{args.final_T}-scheduler{args.scheduler}"
-
-    iter_count = 0
-    flip_cnt = 0
-    reject_cnt = 0
-    new_label_sample = 0 #flip_cnt + reject_cnt = new_label_sample
-    num_iterations = args.K
-    for _ in tqdm(range(num_iterations), desc="ICM searching"):
-        cur_pool = {k: v for k, v in demonstrations.items() if v["label"] is not None}
-
-        if iter_count == 0:
-            pipeline = get_pipeline_batched(
-                args.model,
-                name=name,
-                num_problems=None,
-                iter=iter_count,
-                assignment=cur_pool,
-            )
-            results = await pipeline.run()
-            cur_metric = results["evaluate"]
-
-            demonstrations, cur_metric = await fix_inconsistency(
-                demonstrations, cur_metric, name, args, iter=iter_count, K=args.consistency_fix_K
-            )
-
-        cur_pool = {k: v for k, v in demonstrations.items() if v["label"] is not None}
-
-        # Weighted sampling - prioritize items in consistency groups that have some labeled items
-        candidates_ids = whole_ids
-        weights = [1 for _ in range(len(candidates_ids))]
-        for i in candidates_ids:
-            if i in cur_pool:
-                same_consistency_group_ids = [j for j in candidates_ids if demonstrations[j]["consistency_id"] == demonstrations[i]["consistency_id"]]
-                for j in same_consistency_group_ids:
-                    if j not in cur_pool:
-                        weights[j] = 100
-
-        example_id = random.choices(candidates_ids, k=1, weights=weights)[0]
-
-        new_label = await predict_assignment(
-            args.model,
-            demonstrations[example_id],
-            cur_pool,
-        )
-
-        if demonstrations[example_id]["label"] != new_label:
-            new_label_sample += 1
-            tmp_demonstrations = deepcopy(demonstrations)
-            tmp_demonstrations[example_id]["label"] = new_label
-
-            dummy_metric = {
-                "train_prob": -1e6,
-                "inconsistent_num": 100000,
-                "train_accuracy": 1.0,
-                "train_predict_distribution": {"0": 0, "1": 0},
-                "train_label_distribution": {"0": 0, "1": 0},
-            }
-
-            tmp_demonstrations, _ = await fix_inconsistency(
-                tmp_demonstrations,
-                dummy_metric,
-                name + "newlabelexplore",
-                args,
-                iter=iter_count,
-                K=10,
-            )
-
-            tmp_pool = {k: v for k, v in tmp_demonstrations.items() if v["label"] is not None}
-
-            pipeline = get_pipeline_batched(
-                model=args.model,
-                name=name,
-                num_problems=None,
-                iter=iter_count,
-                assignment=tmp_pool,
-            )
-            results = await pipeline.run()
-            metric = results["evaluate"]
-
-            T = get_temperature(
-                flip_cnt, args.initial_T, args.final_T, args.decay, schedule=args.scheduler
-            )
-
-            if iter_count % 10 == 0:
-                print(f"iter = {iter_count}, pool size = {len(cur_pool)}, cur acc = {cur_metric['train_accuracy']:.4f}, "
-                      f"new acc = {metric['train_accuracy']:.4f}, cur score = {get_energy(cur_metric, args.alpha):.4f}, "
-                      f"new score = {get_energy(metric, args.alpha):.4f}, cur inconsistent = {cur_metric['inconsistent_num']}, "
-                      f"new inconsistent = {metric['inconsistent_num']}")
-
-            accept_prob = math.exp((get_energy(metric, args.alpha) - get_energy(cur_metric, args.alpha)) / T)
-            if random.random() < accept_prob:
-                demonstrations = tmp_demonstrations
-                flip_cnt += 1
-                cur_metric = metric
-            else:
-                reject_cnt+=1
-
-        iter_count += 1
-
-    # Evaluate on test set
-    print("\nEvaluating ICM on test set...")
-    max_uid = max(demonstrations.keys())
-    correct_cnt = 0
-    label_assignments = {}
-
-    for idx, item in enumerate(tqdm(test, desc="ICM test evaluation")):
-        item['uid'] = max_uid + 1 + idx
-        new_label = await predict_assignment(args.model, item, demonstrations)
-        label_assignments[idx] = new_label
-        item['new_label'] = new_label
-        if item['label'] == new_label:
-            correct_cnt += 1
-
-    test_accuracy = correct_cnt / len(test)
-    print(f"ICM Test Accuracy: {test_accuracy:.4f}")
-
-    # Purge demonstrations where label is None before returning
-    demonstrations = {k: v for k, v in demonstrations.items() if v['label'] is not None}
-
-    return test_accuracy, label_assignments, reject_cnt, new_label_sample, demonstrations
-
 
 async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrations):
     """
@@ -780,21 +637,6 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
         gold_acc = gold_correct / len(test)
         print(f"  Gold labels test accuracy: {gold_acc:.4f}")
 
-        # 2. ICM labels test accuracy (same examples)
-        icm_demos_subset = {}
-        for uid in sampled_uids:
-            icm_demos_subset[uid] = icm_demonstrations[uid].copy()
-
-        icm_correct = 0
-        for idx, item in enumerate(test):
-            item_copy = item.copy()
-            item_copy['uid'] = max_uid + 1 + idx
-            new_label = await predict_assignment(args.model, item_copy, icm_demos_subset)
-            if item['label'] == new_label:
-                icm_correct += 1
-        icm_acc = icm_correct / len(test)
-        print(f"  ICM labels test accuracy: {icm_acc:.4f}")
-
         # 3. Compute ICM training accuracy (how well ICM labels match gold labels)
         icm_train_matches = 0
         for uid in sampled_uids:
@@ -831,7 +673,6 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
         # Store results
         results['num_examples'].append(num_examples)
         results['gold_acc'].append(gold_acc)
-        results['icm_acc'].append(icm_acc)
         results['random_acc'].append(random_acc)
         results['icm_train_acc'].append(icm_train_acc)
 
@@ -943,7 +784,6 @@ def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country)
 async def async_main(args, seed, country):
     """Main async entry point."""
     global model_api
-
     # Set country on args so downstream functions can access it
     args.country = country
 
@@ -955,29 +795,12 @@ async def async_main(args, seed, country):
 
     print(f'Model: {args.model}, Country: {args.country}, Train size: {len(train)}, Test size: {len(test)}')
 
-    # Run ICM
-    print("\n" + "="*50)
-    print("Running ICM Algorithm")
-    print("="*50)
-    icm_acc, icm_labels, reject_cnt, new_label_sample, icm_demos = await icm_main(args, train, fewshot_ids, test)
-    
-    # Save ICM demonstrations to icm_results/
-    icm_results_dir = os.path.join(os.path.dirname(__file__), "icm_results")
-    os.makedirs(icm_results_dir, exist_ok=True)
-    icm_results_path = os.path.join(icm_results_dir, f"icm_demos_{country}_{seed}.json")
-    icm_demos_list = []
-    for uid, demo in icm_demos.items():
-        icm_demos_list.append(demo)
-    with open(icm_results_path, "w") as f:
-        json.dump(icm_demos_list, f, indent=2, default=str)
-    print(f"Saved ICM demonstrations to {icm_results_path}")
-
+    demonstrations, _ = initialize(train, fewshot_ids, args)
+    icm_demos = demonstrations
     # Run golden supervision benchmark
     print("\n" + "="*50)
     print("Running Golden Supervision Benchmark")
     print("="*50)
-    # Reload train data to get fresh labels
-    train, fewshot_ids, test = load_data(args, random_seed)
     golden_acc, golden_labels = await golden_supervision_main(args, train, fewshot_ids, test, icm_demos)
 
     # Run zero-shot chat benchmark
@@ -1006,9 +829,6 @@ async def async_main(args, seed, country):
     print("\n" + "="*50)
     print(f"RESULTS SUMMARY -- {args.country}")
     print("="*50)
-    print(f"ICM new labels sampled {new_label_sample} times out of {args.K}")
-    print(f"ICM reject cnt: {reject_cnt}")
-    print(f"ICM (Unsupervised):      {icm_acc*100:.2f}%")
     print(f"Golden Supervision:      {golden_acc*100:.2f}%")
     print(f"Zero-shot (Chat):        {chat_acc*100:.2f}%")
     print(f"Zero-shot (Pretrained):  {pretrained_acc*100:.2f}%")
@@ -1020,7 +840,6 @@ async def async_main(args, seed, country):
     #plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, args.country)
 
     return {
-        "icm": (icm_acc, icm_labels),
         "golden": (golden_acc, golden_labels),
         "chat": (chat_acc, chat_labels),
         "pretrained": (pretrained_acc, pretrained_labels),
@@ -1066,7 +885,7 @@ if __name__ == "__main__":
         total_test_size = sum(r["test_size"] for r in all_results.values())
 
         aggregated = {}
-        for benchmark in ["icm", "golden", "chat", "pretrained"]:
+        for benchmark in ["golden", "chat", "pretrained"]:
             weighted_acc = sum(
                 r[benchmark][0] * r["test_size"] for r in all_results.values()
             ) / total_test_size
@@ -1077,7 +896,6 @@ if __name__ == "__main__":
         print("AGGREGATED RESULTS (weighted by test set size)")
         print("="*60)
         print(f"Total test examples: {total_test_size}")
-        print(f"ICM (Unsupervised):      {aggregated['icm']*100:.2f}%")
         print(f"Golden Supervision:      {aggregated['golden']*100:.2f}%")
         print(f"Zero-shot (Chat):        {aggregated['chat']*100:.2f}%")
         print(f"Zero-shot (Pretrained):  {aggregated['pretrained']*100:.2f}%")
@@ -1101,13 +919,11 @@ if __name__ == "__main__":
                 if num_ex not in comparison_by_num_examples:
                     comparison_by_num_examples[num_ex] = {
                         'gold_acc_weighted': 0.0,
-                        'icm_acc_weighted': 0.0,
                         'random_acc_weighted': 0.0,
                         'icm_train_acc_weighted': 0.0,
                         'total_test_size': 0,
                     }
                 comparison_by_num_examples[num_ex]['gold_acc_weighted'] += comparison['gold_acc'][i] * test_size
-                comparison_by_num_examples[num_ex]['icm_acc_weighted'] += comparison['icm_acc'][i] * test_size
                 comparison_by_num_examples[num_ex]['random_acc_weighted'] += comparison['random_acc'][i] * test_size
                 comparison_by_num_examples[num_ex]['icm_train_acc_weighted'] += comparison['icm_train_acc'][i] * test_size
                 comparison_by_num_examples[num_ex]['total_test_size'] += test_size
@@ -1116,7 +932,6 @@ if __name__ == "__main__":
         aggregated_comparison = {
             'num_examples': sorted(comparison_by_num_examples.keys()),
             'gold_acc': [],
-            'icm_acc': [],
             'random_acc': [],
             'icm_train_acc': [],
         }
@@ -1124,7 +939,6 @@ if __name__ == "__main__":
             data = comparison_by_num_examples[num_ex]
             total = data['total_test_size']
             aggregated_comparison['gold_acc'].append(data['gold_acc_weighted'] / total)
-            aggregated_comparison['icm_acc'].append(data['icm_acc_weighted'] / total)
             aggregated_comparison['random_acc'].append(data['random_acc_weighted'] / total)
             aggregated_comparison['icm_train_acc'].append(data['icm_train_acc_weighted'] / total)
 
