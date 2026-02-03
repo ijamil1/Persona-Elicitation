@@ -455,6 +455,7 @@ def initialize(train, fewshot_ids, args):
 
     return demonstrations, whole_ids
 
+
 async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrations):
     """
     Benchmark using golden (ground truth) labels for demonstrations.
@@ -617,7 +618,8 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
     for num_examples in tqdm(num_examples_list, desc="Comparing labels by num examples"):
         # Sample by consistency groups: add entire groups until num_examples is reached
         group_ids = list(consistency_groups.keys())
-        rng.shuffle(group_ids)
+        if num_examples != len(all_uids):
+            rng.shuffle(group_ids)
 
         sampled_uids = []
         for gid in group_ids:
