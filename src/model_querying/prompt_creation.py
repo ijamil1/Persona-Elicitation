@@ -40,16 +40,15 @@ def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
     country = example["country"]
 
     prompt = f"### COUNTRY OPINION DATABASE: {country.upper()} ###\n"
-    prompt += "Format: [Question] | [Option] | [Is_Majority]\n\n"
-    prompt += "Q: \"Does the sun rise in the East?\" | Opt: \"Yes\" | Is Majority in {country}: True\n"
-    prompt += "Q: \"Does the sun rise in the East?\" | Opt: \"No\" | Is Majority in {country}: False"
-
+    prompt += "Format: [Survey Question] | [Opinion] | [Is_Most_Popular_Opinion]\n\n"
+    prompt += f"Q: \"Does the sun rise in the East?\" | Op: \"Yes\" | Is Most Popular Opinion in {country}: True\n"
+    prompt += f"Q: \"Does the sun rise in the East?\" | Op: \"No\" | Is Most Popular Opinion in {country}: False\n"
 
     for demo in demonstrations:
-        prompt += f"Q: \"{demo['question']}\" | Opt: \"{demo['choice']}\" | Is Majority in {country}:  {'True' if demo['label'] else 'False'}\n"
+        prompt += f"Q: \"{demo['question']}\" | Op: \"{demo['choice']}\" | Is Most Popular Opinion in {country}: {'True' if demo['label'] else 'False'}\n"
 
     prompt += "---\n"
-    prompt += f"Q: \"{example['question']}\" | Opt: \"{example['choice']}\" | Is Majority in {country}: "
+    prompt += f"Q: \"{example['question']}\" | Op: \"{example['choice']}\" | Is Most Popular Opinion in {country}: "
 
     if pipeline:
         return Prompt(prompt)
@@ -80,8 +79,8 @@ def get_judge_prompt_zeroshot(example, pipeline=True, is_chat_model=False):
     else:
         # Simple pattern completion for base/pretrained models (consistent with few-shot format)
         prompt = f"### COUNTRY OPINION DATABASE: {country.upper()} ###\n"
-        prompt += "Format: [Question] | [Option] | [Is_Majority]\n\n"
-        prompt += f"Q: \"{example['question']}\" | Opt: \"{example['choice']}\" | Is Majority in {country}: "
+        prompt += "Format: [Survey Question] | [Opinion] | [Is_Most_Popular_Opinion]\n\n"
+        prompt += f"Q: \"{example['question']}\" | Op: \"{example['choice']}\" | Is Most Popular Opinion in {country}: "
 
     if pipeline:
         return Prompt(prompt)
