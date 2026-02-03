@@ -70,12 +70,23 @@ def get_judge_prompt_zeroshot(example, pipeline=True, is_chat_model=False):
 
     if is_chat_model:
         # Instruction-style prompt for chat/instruct models
-        prompt = f"You are an expert on the social, economic, and political dynamics of {country}. "
-        prompt += f"Determine if the answer to a question (both listed below) represents the most common opinion among citizens of {country}. "
-        prompt += "Respond with only 'True' or 'False'.\n\n"
-        prompt += f"Q: {example['question']}\n"
-        prompt += f"A: {example['choice']}\n"
-        prompt += "Reflects majority view: "
+        prompt = f"""You are an expert on public opinion and cultural attitudes in {country}. Your task is to determine whether a given opinion represents the most popular response among citizens of {country} for a survey question.
+
+Consider what you know about {country}'s:
+- Cultural values and social norms
+- Political landscape and common political views
+- Religious and moral attitudes
+- Economic conditions and priorities
+- Demographic makeup and generational differences
+
+Based on your knowledge of typical survey responses and public sentiment in {country}, determine if the opinion below would be the MOST COMMONLY SELECTED answer by the general population.
+
+Question: "{example['question']}"
+Opinion: "{example['choice']}"
+
+Is this opinion the most popular response in {country}? Answer only with "True" or "False".
+
+Answer: """
     else:
         # Simple pattern completion for base/pretrained models (consistent with few-shot format)
         prompt = f"### COUNTRY OPINION DATABASE: {country.upper()} ###\n"
