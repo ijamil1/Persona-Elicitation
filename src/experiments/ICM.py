@@ -287,7 +287,7 @@ async def predict_assignment(model, example, demonstrations):
     return int(new_label)
 
 
-async def predict_assignment_zero_shot(model, example, is_chat_model=False):
+async def predict_assignment_zero_shot(model, example, is_chat_model=False, print_prompt=False):
     """
     Predict label for a single example using zero-shot prompting.
 
@@ -297,6 +297,9 @@ async def predict_assignment_zero_shot(model, example, is_chat_model=False):
         is_chat_model: If True, use instruction-style prompt for chat models
     """
     prompt = get_judge_prompt_zeroshot(example, pipeline=False, is_chat_model=is_chat_model)
+
+    if print_prompt:
+        print(prompt)
 
     responses = await model_api(
         model,
@@ -508,12 +511,14 @@ async def zero_shot_chat_main(args, test):
         'RedHatAI/Meta-Llama-3.1-70B-FP8': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'
     }
     instruct_model = model_mapping.get(args.model, args.model + '-Instruct-Turbo')
-
+    print(f"In zero-shot chat method: Using {instruct_model}")
     correct_cnt = 0
     label_assignments = {}
-
+    print_prompt_ind = False
     for idx, item in enumerate(tqdm(test, desc="Zero-shot chat evaluation")):
-        new_label = await predict_assignment_zero_shot(instruct_model, item, is_chat_model=True)
+        if idx == len(test)-1:
+            print_prompt_ind=True
+        new_label = await predict_assignment_zero_shot(instruct_model, item, is_chat_model=True, print_prompt=print_prompt_ind)
         label_assignments[idx] = new_label
         item['new_label'] = new_label
         if item['label'] == new_label:
@@ -533,9 +538,12 @@ async def zero_shot_pretrained_main(args, test):
 
     correct_cnt = 0
     label_assignments = {}
-
+    print(f"In zero-shot base method: Using {args.model}")
+    print_prompt_ind = False
     for idx, item in enumerate(tqdm(test, desc="Zero-shot pretrained evaluation")):
-        new_label = await predict_assignment_zero_shot(args.model, item, is_chat_model=False)
+        if idx == len(test)-1:
+            print_prompt_ind=True
+        new_label = await predict_assignment_zero_shot(args.model, item, is_chat_model=False, print_prompt=print_prompt_ind)
         label_assignments[idx] = new_label
         item['new_label'] = new_label
         if item['label'] == new_label:
@@ -593,6 +601,8 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
     num_examples_list = [10, 20, 50, 75, 100, 150, 200, 300, 400, 500]
     # Filter to only include values <= available ICM examples
     num_examples_list = [n for n in num_examples_list if n <= len(all_uids)]
+    if len(all_uids) not in num_examples_list:
+        num_examples_list += [len(all_uids)]
 
     results = {
         'num_examples': [],
