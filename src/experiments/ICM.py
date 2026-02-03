@@ -622,17 +622,20 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             rng.shuffle(group_ids)
 
         sampled_uids = []
-        for gid in group_ids:
-            group_uids = consistency_groups[gid]
-            remaining = num_examples - len(sampled_uids)
-            if remaining <= 0:
-                break
-            if len(group_uids) <= remaining:
-                # Add entire group
-                sampled_uids.extend(group_uids)
-            else:
-                # Add partial group to reach exactly num_examples
-                sampled_uids.extend(group_uids[:remaining])
+        if num_examples == len(all_uids):
+            sampled_uids = all_uids  
+        else:
+            for gid in group_ids:
+                group_uids = consistency_groups[gid]
+                remaining = num_examples - len(sampled_uids)
+                if remaining <= 0:
+                    break
+                if len(group_uids) <= remaining:
+                    # Add entire group
+                    sampled_uids.extend(group_uids)
+                else:
+                    # Add partial group to reach exactly num_examples
+                    sampled_uids.extend(group_uids[:remaining])
 
 
         # 1. Gold labels test accuracy
