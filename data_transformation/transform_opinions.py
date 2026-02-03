@@ -98,7 +98,14 @@ def main():
     assert (label_ones == 1).all(), "Some (question, country) groups don't have exactly 1 label=1"
     print(f"Verified: each (question, country) has exactly 1 row with label=1")
 
-    # Step 8: Write to CSV
+    # Step 8: Downsample to 2 rows per (question, country): the label=1 row + 1 random label=0 row
+    label_one = result_df[result_df["label"] == 1]
+    label_zero = result_df[result_df["label"] == 0]
+    sampled_zero = label_zero.groupby(["question", "country"]).sample(n=1, random_state=42)
+    result_df = pd.concat([label_one, sampled_zero]).sort_index()
+    print(f"After downsampling to 2 per group: {len(result_df)} rows")
+
+    # Step 9: Write to CSV
     output_path = "data/transformed_global_opinions.csv"
     result_df.to_csv(output_path, index=False)
     print(f"Wrote output to {output_path}")

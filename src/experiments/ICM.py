@@ -394,7 +394,7 @@ def load_data(args, seed):
 
     total_items = len(country_data)
     target_train_items = min(int(total_items * 0.75), 200)
-    target_test_items = min(75, int(total_items * .25))    
+    target_test_items = min(76, int(total_items * .25))    
 
     train_ids = []
     train_group_ids = []
