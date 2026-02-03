@@ -359,13 +359,19 @@ def get_args():
                         help="Maximum number of batched tokens per iteration")
     parser.add_argument("--max_num_seqs", type=int, default=64,
                         help="Maximum number of sequences per iteration")
+    parser.add_argument("--dataset", type=str, default="all", choices=["all", "binary"],
+                        help="Dataset to use: 'all' for all questions, 'binary' for binary questions only")
 
     args = parser.parse_args()
     return args
 
 
 def load_data(args, seed):
-    with open(get_root_directory() / "data/transformed_global_opinions.json") as f:
+    if args.dataset == "binary":
+        data_file = "transformed_global_opinions_binary.json"
+    else:
+        data_file = "transformed_global_opinions.json"
+    with open(get_root_directory() / "data" / data_file) as f:
         data = json.load(f)
 
     # Filter by country
