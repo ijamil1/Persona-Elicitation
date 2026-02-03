@@ -41,12 +41,15 @@ def get_judge_prompt_fewshot(example, demonstrations=None, pipeline=True):
 
     prompt = f"### COUNTRY OPINION DATABASE: {country.upper()} ###\n"
     prompt += "Format: [Question] | [Option] | [Is_Majority]\n\n"
+    prompt += "Q: \"Does the sun rise in the East?\" | Opt: \"Yes\" | Is Majority in {country}: True\n"
+    prompt += "Q: \"Does the sun rise in the East?\" | Opt: \"No\" | Is Majority in {country}: False"
+
 
     for demo in demonstrations:
-        prompt += f"Q: \"{demo['question']}\" | Opt: \"{demo['choice']}\" | Majority: {'True' if demo['label'] else 'False'}\n"
+        prompt += f"Q: \"{demo['question']}\" | Opt: \"{demo['choice']}\" | Is Majority in {country}:  {'True' if demo['label'] else 'False'}\n"
 
     prompt += "---\n"
-    prompt += f"Q: \"{example['question']}\" | Opt: \"{example['choice']}\" | Majority: "
+    prompt += f"Q: \"{example['question']}\" | Opt: \"{example['choice']}\" | Is Majority in {country}: "
 
     if pipeline:
         return Prompt(prompt)
@@ -78,7 +81,7 @@ def get_judge_prompt_zeroshot(example, pipeline=True, is_chat_model=False):
         # Simple pattern completion for base/pretrained models (consistent with few-shot format)
         prompt = f"### COUNTRY OPINION DATABASE: {country.upper()} ###\n"
         prompt += "Format: [Question] | [Option] | [Is_Majority]\n\n"
-        prompt += f"Q: \"{example['question']}\" | Opt: \"{example['choice']}\" | Majority: "
+        prompt += f"Q: \"{example['question']}\" | Opt: \"{example['choice']}\" | Is Majority in {country}: "
 
     if pipeline:
         return Prompt(prompt)
