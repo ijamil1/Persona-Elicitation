@@ -625,7 +625,6 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
     results = {
         'num_examples': [],
         'gold_acc': [],
-        'icm_acc': [],
         'random_acc': [],
         'icm_train_acc': [],
     }
