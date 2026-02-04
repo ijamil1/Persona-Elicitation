@@ -497,6 +497,7 @@ async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrat
     max_uid = max(all_demonstrations.keys())
     correct_cnt = 0
     label_assignments = {}
+    gold_predictions = []
 
     # DEBUG: Check for None labels in demonstrations
     none_label_count = sum(1 for v in demonstrations.values() if v.get('label') is None)
@@ -511,14 +512,19 @@ async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrat
     print(f"[DEBUG golden_supervision_main] First prompt length: {len(prompt_debug)}")
     print(f"[DEBUG golden_supervision_main] Num demos in first prompt: {len(demos_debug)}")
 
+    test_items = []
     for idx, item in enumerate(tqdm(test, desc="Golden supervision evaluation")):
         item['uid'] = max_uid + 1 + idx
+        test_items.append(item)
         new_label = await predict_assignment(args.model, item, demonstrations)
+        gold_predictions.append(new_label)
         label_assignments[idx] = new_label
         item['new_label'] = new_label
         if item['label'] == new_label:
             correct_cnt += 1
 
+    print(f"[DEBUG golden_supervision_main] Predictions for full set: {gold_predictions}")
+    print(f"[DEBUG golden_supervision_main] Test set: {test_items}")
     test_accuracy = correct_cnt / len(test)
     print(f"Golden Supervision Test Accuracy: {test_accuracy:.4f}")
 
@@ -699,11 +705,17 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             print(f"[DEBUG compare_labels] First prompt hash: {hash(prompt_debug)}")
             print(f"[DEBUG compare_labels] First prompt length: {len(prompt_debug)}")
             print(f"[DEBUG compare_labels] Num demos in first prompt: {len(demos_debug)}")
+            # Clear prefix cache before compare_labels
+            if model_api._vllm_client and model_api._vllm_client._engine:
+                model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
+
 
         gold_correct = 0
         gold_predictions = []  # DEBUG: Store predictions for comparison
+        test_items = []
         for idx, item in enumerate(test):
             item_copy = item.copy()
+            test_items.append(item_copy)
             item_copy['uid'] = max_uid + 1 + idx
             new_label = await predict_assignment(args.model, item_copy, gold_demos_subset)
             gold_predictions.append(new_label)  # DEBUG
@@ -715,6 +727,7 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
         # DEBUG: For full training set, store predictions for later comparison
         if num_examples == len(all_uids):
             print(f"[DEBUG compare_labels] Predictions for full set: {gold_predictions}")
+            print(f"[DEBUG compare_labels] Test set: {test_items}")
 
         # 3. Compute ICM training accuracy (how well ICM labels match gold labels)
         icm_train_matches = 0
@@ -894,10 +907,16 @@ async def async_main(args, seed, country):
     print("\n" + "="*50)
     print(f"Running Zero-shot Pretrained Benchmark for {country}")
     print("="*50)
+    # Clear prefix cache before compare_labels
+    if model_api._vllm_client and model_api._vllm_client._engine:
+        model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
     _, _, test = load_data(args, random_seed)  # Reload test
     pretrained_acc, pretrained_labels = await zero_shot_pretrained_main(args, test)
 
     # Compare labels by number of examples (gold vs ICM vs random)
+    # Clear prefix cache before compare_labels
+    if model_api._vllm_client and model_api._vllm_client._engine:
+        model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
     train, fewshot_ids, test = load_data(args, random_seed)  # Reload data
     icm_demos = demonstrations
     comparison_results = await compare_labels_by_num_examples(
