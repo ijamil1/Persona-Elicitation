@@ -909,11 +909,11 @@ if __name__ == "__main__":
             data = comparison_by_num_examples[num_ex]
             total = data['total_test_size']
             aggregated_comparison['gold_acc'].append(data['gold_acc_weighted'] / total)
-            aggregated_comparison['gold_acc_std'].append(data['gold_acc_std_weighted'] / (total**2))
+            aggregated_comparison['gold_acc_std'].append(np.sqrt(data['gold_acc_std_weighted'] / (total**2)))
             aggregated_comparison['random_acc'].append(data['random_acc_weighted'] / total)
-            aggregated_comparison['random_acc_std'].append(data['random_acc_std_weighted'] / (total**2))
+            aggregated_comparison['random_acc_std'].append(np.sqrt(data['random_acc_std_weighted'] / (total**2)))
             aggregated_comparison['icm_train_acc'].append(data['icm_train_acc_weighted'] / total)
-            aggregated_comparison['icm_train_acc_std'].append(data['icm_train_acc_std_weighted'] / (total**2))
+            aggregated_comparison['icm_train_acc_std'].append(np.sqrt(data['icm_train_acc_std_weighted'] / (total**2)))
 
         print(aggregated_comparison)
 
