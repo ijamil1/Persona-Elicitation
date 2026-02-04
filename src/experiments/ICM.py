@@ -495,6 +495,8 @@ async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrat
 
         for idx, item in enumerate(tqdm(test, desc="Golden supervision evaluation")):
             item['uid'] = max_uid + 1 + idx
+            if model_api._vllm_client and model_api._vllm_client._engine:
+                model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
             new_label = await predict_assignment(args.model, item, demonstrations)
             if item['label'] == new_label:
                 correct_cnt += 1
@@ -553,6 +555,8 @@ async def zero_shot_pretrained_main(args, test):
     correct_cnt = 0
     print(f"In zero-shot base method: Using {args.model}")
     for idx, item in enumerate(tqdm(test, desc="Zero-shot pretrained evaluation")):
+        if model_api._vllm_client and model_api._vllm_client._engine:
+            model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
         new_label = await predict_assignment_zero_shot(args.model, item, is_chat_model=False)
         if item['label'] == new_label:
             correct_cnt += 1
@@ -660,6 +664,9 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
                 item_copy = item.copy()
                 test_items.append(item_copy)
                 item_copy['uid'] = max_uid + 1 + idx
+                if model_api._vllm_client and model_api._vllm_client._engine:
+                    model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
+
                 new_label = await predict_assignment(args.model, item_copy, gold_demos_subset)
                 gold_predictions.append(new_label)  # DEBUG
                 if item['label'] == new_label:
@@ -699,13 +706,12 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
                     random_acc_train_matches += 1
             assert random_acc_train_matches <= icm_train_matches
 
-            if model_api._vllm_client and model_api._vllm_client._engine:
-                    model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
-
             random_correct = 0
             for idx, item in enumerate(test):
                 item_copy = item.copy()
                 item_copy['uid'] = max_uid + 1 + idx
+                if model_api._vllm_client and model_api._vllm_client._engine:
+                    model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
                 new_label = await predict_assignment(args.model, item_copy, random_demos_subset)
                 if item['label'] == new_label:
                     random_correct += 1
@@ -772,16 +778,11 @@ async def async_main(args, seed, country):
     print("\n" + "="*50)
     print(f"Running Zero-shot Pretrained Benchmark for {country}")
     print("="*50)
-    # Clear prefix cache before compare_labels
-    if model_api._vllm_client and model_api._vllm_client._engine:
-        model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
+
     _, _, test = load_data(args, random_seed)  # Reload test
     pretrained_acc = await zero_shot_pretrained_main(args, test)
 
-    # Clear prefix cache before compare_labels
-    if model_api._vllm_client and model_api._vllm_client._engine:
-        model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
-    
+        
     # Compare labels by number of examples (gold vs ICM vs random)
     train, fewshot_ids, test = load_data(args, random_seed)  # Reload data
     icm_demos = demonstrations
