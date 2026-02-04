@@ -476,6 +476,8 @@ async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrat
             item = train[i]
             item["uid"] = id
             all_demonstrations[id] = item
+        else:
+            assert False
 
     # Randomize demonstration order with fixed seed for reproducibility
     demo_rng = random.Random(42)
@@ -593,7 +595,7 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             item = train[i].copy()
             item["uid"] = id
             gold_demonstrations[id] = item
-
+    assert all_uids == list(gold_demonstrations.keys())
     # Group UIDs by consistency_id for sampling
     consistency_groups = {}
     for uid in all_uids:
