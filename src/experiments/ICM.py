@@ -581,7 +581,7 @@ async def icm_main(args, train, fewshot_ids, test):
     max_uid = max(demonstrations.keys())
     test_acc_list = []
 
-    for i in range(5):
+    for i in range(10):
         # Randomize demonstration order
         demo_rng = random.Random()
         shuffled_uids = list(demonstrations.keys())
@@ -591,10 +591,6 @@ async def icm_main(args, train, fewshot_ids, test):
         correct_cnt = 0
         for idx, item in enumerate(tqdm(test, desc=f"ICM test evaluation (iter {i+1}/5)")):
             item['uid'] = max_uid + 1 + idx
-
-            if model_api._vllm_client and model_api._vllm_client._engine:
-                model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
-
             new_label = await predict_assignment(args.model, item, shuffled_demonstrations)
             if item['label'] == new_label:
                 correct_cnt += 1
@@ -631,7 +627,7 @@ async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrat
         
     max_uid = max(all_demonstrations.keys())
     test_acc_list = []
-    for i in range(5):
+    for i in range(10):
         # Randomize demonstration order with fixed seed for reproducibility
         demo_rng = random.Random()
         shuffled_uids = list(all_demonstrations.keys())
@@ -643,10 +639,6 @@ async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrat
 
         for idx, item in enumerate(tqdm(test, desc="Golden supervision evaluation")):
             item['uid'] = max_uid + 1 + idx
-
-            if model_api._vllm_client and model_api._vllm_client._engine:
-                model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
-
             new_label = await predict_assignment(args.model, item, demonstrations)
             if item['label'] == new_label:
                 correct_cnt += 1
@@ -707,10 +699,6 @@ async def zero_shot_pretrained_main(args, test):
     correct_cnt = 0
     print(f"In zero-shot base method: Using {args.model}")
     for idx, item in enumerate(tqdm(test, desc="Zero-shot pretrained evaluation")):
-        
-        if model_api._vllm_client and model_api._vllm_client._engine:
-            model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
-
         new_label = await predict_assignment_zero_shot(args.model, item, is_chat_model=False)
         if item['label'] == new_label:
             correct_cnt += 1
@@ -783,7 +771,7 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
     }
 
     rng = random.Random()
-    for iteration in range(5):
+    for iteration in range(10):
         print(f"\n--- Iteration {iteration + 1}/5 ---")
         for num_examples in tqdm(num_examples_list, desc="Comparing labels by num examples"):
             # Sample by consistency groups: add entire groups until num_examples is reached
@@ -811,10 +799,6 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             for idx, item in enumerate(test):
                 item_copy = item.copy()
                 item_copy['uid'] = max_uid + 1 + idx
-                
-                if model_api._vllm_client and model_api._vllm_client._engine:
-                    model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
-
                 new_label = await predict_assignment(args.model, item_copy, gold_demos_subset)
                 if item['label'] == new_label:
                     gold_correct += 1
@@ -830,10 +814,6 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             for idx, item in enumerate(test):
                 item_copy = item.copy()
                 item_copy['uid'] = max_uid + 1 + idx
-                
-                if model_api._vllm_client and model_api._vllm_client._engine:
-                    model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
-
                 new_label = await predict_assignment(args.model, item_copy, icm_demos_subset)
                 if item['label'] == new_label:
                     icm_correct += 1
@@ -877,11 +857,6 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             for idx, item in enumerate(test):
                 item_copy = item.copy()
                 item_copy['uid'] = max_uid + 1 + idx
-
-                # Clear prefix cache before random evaluation
-                if model_api._vllm_client and model_api._vllm_client._engine:
-                    model_api._vllm_client._engine.llm_engine.reset_prefix_cache()
-
                 new_label = await predict_assignment(args.model, item_copy, random_demos_subset)
                 if item['label'] == new_label:
                     random_correct += 1
