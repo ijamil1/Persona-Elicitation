@@ -479,15 +479,37 @@ async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrat
         else:
             assert False
 
+    # DEBUG: Verify key ordering matches icm_demonstrations
+    assert list(all_demonstrations.keys()) == list(icm_demonstrations.keys()), \
+        f"Key mismatch: all_demonstrations keys differ from icm_demonstrations keys"
+
     # Randomize demonstration order with fixed seed for reproducibility
     demo_rng = random.Random(42)
     shuffled_uids = list(all_demonstrations.keys())
     demo_rng.shuffle(shuffled_uids)
+
+    # DEBUG: Print first few shuffled UIDs for verification
+    print(f"[DEBUG golden_supervision_main] First 5 shuffled UIDs: {shuffled_uids[:5]}")
+    print(f"[DEBUG golden_supervision_main] Total demonstrations: {len(shuffled_uids)}")
+
     demonstrations = {uid: all_demonstrations[uid] for uid in shuffled_uids}
 
     max_uid = max(all_demonstrations.keys())
     correct_cnt = 0
     label_assignments = {}
+
+    # DEBUG: Check for None labels in demonstrations
+    none_label_count = sum(1 for v in demonstrations.values() if v.get('label') is None)
+    print(f"[DEBUG golden_supervision_main] Demonstrations with None labels: {none_label_count}")
+
+    # DEBUG: Generate and print first prompt for comparison
+    test_item_debug = test[0].copy()
+    test_item_debug['uid'] = max_uid + 1
+    demos_debug = [v for k, v in demonstrations.items() if k != test_item_debug["uid"] and v["label"] is not None]
+    prompt_debug = get_judge_prompt_fewshot(test_item_debug, demos_debug, pipeline=False)
+    print(f"[DEBUG golden_supervision_main] First prompt hash: {hash(prompt_debug)}")
+    print(f"[DEBUG golden_supervision_main] First prompt length: {len(prompt_debug)}")
+    print(f"[DEBUG golden_supervision_main] Num demos in first prompt: {len(demos_debug)}")
 
     for idx, item in enumerate(tqdm(test, desc="Golden supervision evaluation")):
         item['uid'] = max_uid + 1 + idx
@@ -595,7 +617,17 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             item = train[i].copy()
             item["uid"] = id
             gold_demonstrations[id] = item
-    assert all_uids == list(gold_demonstrations.keys())
+        else:
+            assert False
+
+    # DEBUG: Verify labels match between gold_demonstrations and icm_demonstrations vanilla_labels
+    for uid in all_uids:
+        gold_label = gold_demonstrations[uid]['label']
+        icm_vanilla = icm_demonstrations[uid].get('vanilla_label', icm_demonstrations[uid]['label'])
+        if gold_label != icm_vanilla:
+            print(f"[DEBUG] Label mismatch at UID {uid}: gold={gold_label}, icm_vanilla={icm_vanilla}")
+    print(f"[DEBUG compare_labels] Verified labels for {len(all_uids)} demonstrations")
+    
     # Group UIDs by consistency_id for sampling
     consistency_groups = {}
     for uid in all_uids:
@@ -633,6 +665,9 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
             demo_rng = random.Random(42)
             sampled_uids = list(all_uids)
             demo_rng.shuffle(sampled_uids)
+            # DEBUG: Print first few shuffled UIDs for verification
+            print(f"[DEBUG compare_labels] First 5 shuffled UIDs (full set): {sampled_uids[:5]}")
+            print(f"[DEBUG compare_labels] Total demonstrations: {len(sampled_uids)}")
         else:
             for gid in group_ids:
                 group_uids = consistency_groups[gid]
@@ -651,15 +686,35 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
         gold_demos_subset = {uid: gold_demonstrations[uid].copy() for uid in sampled_uids}
         max_uid = max(gold_demos_subset.keys())
 
+        # DEBUG: For full training set, compare with golden_supervision_main
+        if num_examples == len(all_uids):
+            none_label_count = sum(1 for v in gold_demos_subset.values() if v.get('label') is None)
+            print(f"[DEBUG compare_labels] Demonstrations with None labels: {none_label_count}")
+
+            # DEBUG: Generate and print first prompt for comparison
+            test_item_debug = test[0].copy()
+            test_item_debug['uid'] = max_uid + 1
+            demos_debug = [v for k, v in gold_demos_subset.items() if k != test_item_debug["uid"] and v["label"] is not None]
+            prompt_debug = get_judge_prompt_fewshot(test_item_debug, demos_debug, pipeline=False)
+            print(f"[DEBUG compare_labels] First prompt hash: {hash(prompt_debug)}")
+            print(f"[DEBUG compare_labels] First prompt length: {len(prompt_debug)}")
+            print(f"[DEBUG compare_labels] Num demos in first prompt: {len(demos_debug)}")
+
         gold_correct = 0
+        gold_predictions = []  # DEBUG: Store predictions for comparison
         for idx, item in enumerate(test):
             item_copy = item.copy()
             item_copy['uid'] = max_uid + 1 + idx
             new_label = await predict_assignment(args.model, item_copy, gold_demos_subset)
+            gold_predictions.append(new_label)  # DEBUG
             if item['label'] == new_label:
                 gold_correct += 1
         gold_acc = gold_correct / len(test)
         print(f"  Gold labels test accuracy: {gold_acc:.4f}")
+
+        # DEBUG: For full training set, store predictions for later comparison
+        if num_examples == len(all_uids):
+            print(f"[DEBUG compare_labels] Predictions for full set: {gold_predictions}")
 
         # 3. Compute ICM training accuracy (how well ICM labels match gold labels)
         icm_train_matches = 0
@@ -844,6 +899,7 @@ async def async_main(args, seed, country):
 
     # Compare labels by number of examples (gold vs ICM vs random)
     train, fewshot_ids, test = load_data(args, random_seed)  # Reload data
+    icm_demos = demonstrations
     comparison_results = await compare_labels_by_num_examples(
         args, train, fewshot_ids, test, icm_demos, random_seed
     )
