@@ -483,7 +483,7 @@ async def golden_supervision_main(args, train, fewshot_ids, test, icm_demonstrat
     
     max_uid = max(all_demonstrations.keys())
     test_acc_list = []
-    for i in range(10):
+    for i in range(5):
         # Randomize demonstration order with fixed seed for reproducibility
         demo_rng = random.Random()
         shuffled_uids = list(all_demonstrations.keys())
@@ -552,11 +552,8 @@ async def zero_shot_pretrained_main(args, test):
 
     correct_cnt = 0
     print(f"In zero-shot base method: Using {args.model}")
-    print_prompt_ind = False
     for idx, item in enumerate(tqdm(test, desc="Zero-shot pretrained evaluation")):
-        if idx == len(test)-1:
-            print_prompt_ind=True
-        new_label = await predict_assignment_zero_shot(args.model, item, is_chat_model=False, print_prompt=print_prompt_ind)
+        new_label = await predict_assignment_zero_shot(args.model, item, is_chat_model=False)
         if item['label'] == new_label:
             correct_cnt += 1
 
@@ -634,7 +631,7 @@ async def compare_labels_by_num_examples(args, train, fewshot_ids, test, icm_dem
     }
 
     rng = random.Random()
-    for i in range(10):
+    for i in range(5):
         for num_examples in tqdm(num_examples_list, desc="Comparing labels by num examples"):
             # Sample by consistency groups: add entire groups until num_examples is reached
             group_ids = list(consistency_groups.keys())
