@@ -821,21 +821,21 @@ async def async_main(args, seed, country):
     icm_demos = demonstrations
     # Run golden supervision benchmark
     print("\n" + "="*50)
-    print("Running Golden Supervision Benchmark")
+    print(f"Running Golden Supervision Benchmark for {country}")
     print("="*50)
     train, fewshot_ids, test = load_data(args, random_seed)
     golden_acc, golden_labels = await golden_supervision_main(args, train, fewshot_ids, test, icm_demos)
 
     # Run zero-shot chat benchmark
     print("\n" + "="*50)
-    print("Running Zero-shot Chat Benchmark")
+    print(f"Running Zero-shot Chat Benchmark for {country}")
     print("="*50)
     _, _, test = load_data(args, random_seed)  # Reload test
     chat_acc, chat_labels = await zero_shot_chat_main(args, test)
 
     # Run zero-shot pretrained benchmark
     print("\n" + "="*50)
-    print("Running Zero-shot Pretrained Benchmark")
+    print(f"Running Zero-shot Pretrained Benchmark for {country}")
     print("="*50)
     _, _, test = load_data(args, random_seed)  # Reload test
     pretrained_acc, pretrained_labels = await zero_shot_pretrained_main(args, test)
@@ -846,26 +846,19 @@ async def async_main(args, seed, country):
         args, train, fewshot_ids, test, icm_demos, random_seed
     )
     
-    #plot_accuracy_vs_num_examples(comparison_results, args.country)
-
-    # Print summary
     print("\n" + "="*50)
-    print(f"RESULTS SUMMARY -- {args.country}")
+    print(f"RESULTS SUMMARY -- {country}")
     print("="*50)
     print(f"Golden Supervision:      {golden_acc*100:.2f}%")
     print(f"Zero-shot (Chat):        {chat_acc*100:.2f}%")
     print(f"Zero-shot (Pretrained):  {pretrained_acc*100:.2f}%")
-
-    print(comparison_results)
-
-
-    # Plot results
-    #plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, args.country)
-
+    print(f"Comparison results: {comparison_results}")
+ 
     return {
-        "golden": (golden_acc, golden_labels),
-        "chat": (chat_acc, chat_labels),
-        "pretrained": (pretrained_acc, pretrained_labels),
+        "country": country,
+        "golden": golden_acc,
+        "chat": chat_acc,
+        "pretrained": pretrained_acc,
         "test_size": test_size,
         "comparison": comparison_results,
     }
@@ -907,13 +900,14 @@ if __name__ == "__main__":
         # Aggregate results weighted by test set size
         total_test_size = sum(r["test_size"] for r in all_results.values())
 
-        aggregated = {}
+        aggregated = {"country": "aggregated"}
         for benchmark in ["golden", "chat", "pretrained"]:
             weighted_acc = sum(
-                r[benchmark][0] * r["test_size"] for r in all_results.values()
+                r[benchmark] * r["test_size"] for r in all_results.values()
             ) / total_test_size
             aggregated[benchmark] = weighted_acc
-
+        aggregated['comparison'] = None
+        
         # Print aggregated summary
         print("\n" + "="*60)
         print("AGGREGATED RESULTS (weighted by test set size)")
@@ -922,15 +916,6 @@ if __name__ == "__main__":
         print(f"Golden Supervision:      {aggregated['golden']*100:.2f}%")
         print(f"Zero-shot (Chat):        {aggregated['chat']*100:.2f}%")
         print(f"Zero-shot (Pretrained):  {aggregated['pretrained']*100:.2f}%")
-
-        # Plot aggregated results
-        #plot_test_accuracies(
-        #    aggregated["icm"],
-        #    aggregated["golden"],
-        #    aggregated["chat"],
-        #    aggregated["pretrained"],
-        #    "aggregated"
-        #)
 
         # Aggregate comparison results across countries (weighted by test set size)
         # Group by num_examples and compute weighted averages
@@ -966,8 +951,18 @@ if __name__ == "__main__":
             aggregated_comparison['icm_train_acc'].append(data['icm_train_acc_weighted'] / total)
 
         print(aggregated_comparison)
-        # Plot aggregated comparison
-        #plot_accuracy_vs_num_examples(aggregated_comparison, "Aggregated")
+
+        aggregated['comparison'] = aggregated_comparison
+
+        # Print JSON-friendly outputs
+        print("\n" + "="*60)
+        print("JSON OUTPUTS")
+        print("=\n"*60)
+        print("[")
+        for country, results in all_results.items():
+            print(json.dumps(results, indent=2) + ",")
+        print(json.dumps(aggregated, indent=2))
+        print("]")
 
     finally:
         # Gracefully shutdown vLLM engine
