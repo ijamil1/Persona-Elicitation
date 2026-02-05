@@ -77,6 +77,30 @@ This fork introduces substantial modifications to adapt ICM for persona elicitat
 - Temperature scheduling adjustments for simulated annealing
 - Prompt engineering iterations for base model compatibility
 
+### Docker Image Build
+
+A separate repository was created to build the custom Docker image: [Docker_PersonaElicitation_Build](https://github.com/ijamil1/Docker_PersonaElicitiation_Build)
+
+**Why this was needed:**
+- Installing vLLM via `pip install` was extremely slow on cloud GPU instances, wasting expensive compute credits
+- The default `vllm/vllm-openai` images auto-start a vLLM server on container launch, which is incompatible with the in-process vLLM client used in this codebase
+- My local machine lacked sufficient disk space to build the image
+
+**Solution:** A minimal Dockerfile that extends the official vLLM image but overrides the entrypoint:
+
+```dockerfile
+FROM vllm/vllm-openai:v0.13.0
+
+# Install git and other useful tools
+RUN apt-get update && apt-get install -y git curl vim && rm -rf /var/lib/apt/lists/*
+
+# Override the entrypoint so vLLM server doesn't auto-start
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["sleep infinity"]
+```
+
+The image is built and pushed to Docker Hub via GitHub Actions, avoiding local disk space constraints.
+
 ## Deployment
 
 The experiments were deployed and executed on cloud infrastructure:

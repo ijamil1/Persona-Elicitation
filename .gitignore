@@ -152,6 +152,7 @@ wandb/
 .env
 *api_key*
 
+.claude
 
 # results
 logs
