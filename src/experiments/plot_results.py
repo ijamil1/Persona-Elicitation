@@ -1,15 +1,16 @@
 import argparse
 import json
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 
 
 def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country,
-                         icm_std=0, golden_std=0, chat_std=0, pretrained_std=0):
+                         icm_std=0, golden_std=0, chat_std=0, pretrained_std=0, prefix=""):
     """
     Plot comparison of test accuracies across methods with error bars.
     """
-    save_path = f"figure_1_persona_{country}.png"
+    save_path = f"{prefix}_figure_1_persona_{country}.png"
     accuracies = [
         pretrained_acc * 100,
         chat_acc * 100,
@@ -77,15 +78,16 @@ def plot_test_accuracies(icm_acc, golden_acc, chat_acc, pretrained_acc, country,
     print(f"Plot saved to {save_path}")
 
 
-def plot_accuracy_vs_num_examples(results, country):
+def plot_accuracy_vs_num_examples(results, country, prefix=""):
     """
     Plot test accuracy as a function of number of in-context examples with error bars.
 
     Args:
         results: Dict with num_examples, gold_acc, gold_acc_std, random_acc, random_acc_std, etc.
         country: Country name for title
+        prefix: Prefix for the output filename
     """
-    save_path = f"figure_2_accuracy_vs_examples_{country}.png"
+    save_path = f"{prefix}_figure_2_accuracy_vs_examples_{country}.png"
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -144,6 +146,9 @@ def main():
                         help="Path to JSON file containing benchmark results")
     args = parser.parse_args()
 
+    # Extract filename prefix from input path (without .json extension)
+    filename_prefix = os.path.basename(args.input).replace('.json', '')
+
     # Load JSON data
     with open(args.input, 'r') as f:
         data = json.load(f)
@@ -165,13 +170,14 @@ def main():
         # Generate test accuracies bar plot with error bars
         plot_test_accuracies(
             icm_acc, golden_acc, chat_acc, pretrained_acc, country,
-            icm_std=icm_std, golden_std=golden_std, chat_std=chat_std, pretrained_std=pretrained_std
+            icm_std=icm_std, golden_std=golden_std, chat_std=chat_std, pretrained_std=pretrained_std,
+            prefix=filename_prefix
         )
 
         # Generate accuracy vs num_examples plot if comparison data exists
         comparison = result.get('comparison')
         if comparison is not None:
-            plot_accuracy_vs_num_examples(comparison, country)
+            plot_accuracy_vs_num_examples(comparison, country, prefix=filename_prefix)
         else:
             print(f"Skipping accuracy vs num_examples plot for {country} (no comparison data)")
 
