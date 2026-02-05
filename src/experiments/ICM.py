@@ -400,8 +400,8 @@ def load_data(args, seed):
     rng.shuffle(group_ids)
 
     total_items = len(country_data)
-    target_train_items = min(int(total_items * 0.75), 200)
-    target_test_items = min(76, int(total_items * .25))    
+    target_train_items = min(int(total_items * 0.75), 125)
+    target_test_items = min(50, int(total_items * .25))    
 
     train_ids = []
     train_group_ids = []
