@@ -4,7 +4,7 @@ This project applies Internal Coherence Maximization (ICM) to the task of **pers
 
 ## Acknowledgments
 
-This repository is forked from [Unsupervised-Elicitation](https://github.com/Jiaxin-Wen/Unsupervised-Elicitation) by Jiaxin Wen et al., which introduces the ICM algorithm for unsupervised skill elicitation from pretrained language models. The original work demonstrates that ICM is competitive with human-labeled supervision on tasks like TruthfulQA, GSM8k, and Alpaca reward modeling.
+This repository is forked from [Unsupervised-Elicitation](https://github.com/Jiaxin-Wen/Unsupervised-Elicitation) by Jiaxin Wen et al., which implements the ICM algorithm, introduced in https://arxiv.org/pdf/2506.10139v1, for unsupervised elicitation from pretrained language models. The original work demonstrates that ICM is competitive with human-labeled supervision on tasks like TruthfulQA, GSM8k, and Alpaca reward modeling.
 
 ## Task: Persona Elicitation with ICM
 
@@ -348,6 +348,6 @@ This generates `.png` plot files in `src/results/`.
 If you use this work, in addition to acknowledging this repo, please mention the original ICM paper and repo:
 
 https://arxiv.org/pdf/2506.10139v1
+
 https://github.com/Jiaxin-Wen/Unsupervised-Elicitation
 
-```
