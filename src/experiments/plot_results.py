@@ -164,8 +164,8 @@ def main():
         chat_std = result.get('chat_std_dev', 0)
         pretrained_acc = result['pretrained']
         pretrained_std = result.get('pretrained_std_dev', 0)
-        icm_acc = 0  # Placeholder for now
-        icm_std = 0
+        icm_acc = result.get('icm', 0)
+        icm_std = result.get('icm_std_dev', 0)
 
         # Generate test accuracies bar plot with error bars
         plot_test_accuracies(
