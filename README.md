@@ -37,6 +37,20 @@ We adapt ICM for **persona elicitation** on a subset of [GlobalOpinionQA](https:
 1. **Test Accuracy Comparison** (per country): Bar chart comparing ICM, golden supervision, and zero-shot baselines
 2. **Accuracy vs. Number of Examples**: Line plot showing how test accuracy scales with the number of in-context demonstrations
 
+### Results
+
+**Binary Questions Dataset** (K=1000, train=84, test=28):
+
+Only questions with exactly 2 answer options.
+
+![Binary Dataset Aggregated Results](src/results/icm_binary_dataset_K1000_figure_1_persona_aggregated.png)
+
+**Full Dataset** (K=1500, train=125, test=50):
+
+All questions including multi-option questions with 3+ answer choices.
+
+![Full Dataset Aggregated Results](src/results/icm_full_dataset_K1500_figure_1_persona_aggregated.png)
+
 ## Summary of Changes from Original Repository
 
 This fork introduces substantial modifications to adapt ICM for persona elicitation. Key changes:
