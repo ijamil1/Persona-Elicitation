@@ -43,7 +43,7 @@ This fork introduces substantial modifications to adapt ICM for persona elicitat
 
 ### New Functionality
 
-- **vLLM Integration** (`core/llm_api/vllm_llm.py`): Added in-process vLLM client for self-hosted inference with FP8 quantization, prefix caching, and batched inference support
+- **vLLM Integration** (`core/llm_api/vllm_llm.py`): Added in-process vLLM client for self-hosted inference with prefix caching, and batched inference support
 - **Data Transformation** (`data_transformation/`): Scripts to transform GlobalOpinionQA into the binary classification format required by ICM:
   - `transform_opinions.py`: Main transformation pipeline
   - `transform_opinions_binary_questions.py`: Variant for binary-only questions
